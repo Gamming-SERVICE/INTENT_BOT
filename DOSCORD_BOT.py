@@ -23,7 +23,7 @@ import time
 # ══════════════════════════════════════════════════════════════════════════════
 
 CONFIG = {
-    "TOKEN": "MTQ1ODkwMDk4NTAzNTYyMDQwMw.GErAwL.dTGUxFbm0lrpojjsAxRd_uP1HUoHfi9YtZ2TOA",  # REPLACE THIS!
+    "TOKEN": "DISCORD_TOKEN",  # REPLACE THIS!
     "GUILD_ID": 1429056625183948882,
     "PREFIX": "!",
     "OWNER_IDS": [],  # Add your Discord user ID(s)
