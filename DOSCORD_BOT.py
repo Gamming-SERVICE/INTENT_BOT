@@ -2788,7 +2788,350 @@ async def ticketpanel(ctx, channel: discord.TextChannel = None):
         await ctx.message.delete()
     except:
         pass
+        ctx.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
+    }
 
+    channel = await ctx.guild.create_text_channel(
+        f"ticket-{ctx.author.name}".replace(" ", "-").lower()[:50],
+        category=category if isinstance(category, discord.CategoryChannel) else None,
+        overwrites=overwrites,
+        topic=f"Support ticket for {ctx.author} ({ctx.author.id})"
+    )
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            "INSERT INTO tickets (channel_id, user_id, guild_id) VALUES (?, ?, ?)",
+            (channel.id, ctx.author.id, ctx.guild.id)
+        )
+        await db.commit()
+
+    embed = create_embed(
+        title="🎫 Support Ticket",
+        description=(
+            f"Welcome {ctx.author.mention}!\n\n"
+            f"Please describe your issue below.\n"
+            f"A staff member will assist you shortly.\n\n"
+            f"Click 🔒 **Close Ticket** when done."
+        ),
+        color=discord.Color.green(),
+        footer=f"Ticket by {ctx.author.name}"
+    )
+    await channel.send(ctx.author.mention, embed=embed, view=TicketControlView())
+    await ctx.send(f"✅ Ticket created: {channel.mention}")
+
+
+@bot.command()
+async def close(ctx):
+    """Close a ticket"""
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
+            (ctx.channel.id,)
+        )
+        ticket_data = await cursor.fetchone()
+
+    if not ticket_data:
+        return await ctx.send("❌ This is not a ticket channel!")
+
+    await ctx.send("🔒 Closing ticket in 5 seconds...")
+    await asyncio.sleep(5)
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            "UPDATE tickets SET status = 'closed', closed_at = ? WHERE channel_id = ?",
+            (datetime.datetime.utcnow().isoformat(), ctx.channel.id)
+        )
+        await db.commit()
+
+    await ctx.channel.delete()
+
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def add(ctx, member: discord.Member):
+    """Add a user to a ticket"""
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
+            (ctx.channel.id,)
+        )
+        ticket_data = await cursor.fetchone()
+
+    if not ticket_data:
+        return await ctx.send("❌ This is not a ticket channel!")
+
+    await ctx.channel.set_permissions(member, view_channel=True, send_messages=True)
+    await ctx.send(f"✅ Added {member.mention} to the ticket")
+
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def remove(ctx, member: discord.Member):
+    """Remove a user from a ticket"""
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
+            (ctx.channel.id,)
+        )
+        ticket_data = await cursor.fetchone()
+
+    if not ticket_data:
+        return await ctx.send("❌ This is not a ticket channel!")
+
+    await ctx.channel.set_permissions(member, overwrite=None)
+    await ctx.send(f"✅ Removed {member.mention} from the ticket")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GIVEAWAY COMMANDS (FIXED)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@bot.command()
+@commands.has_permissions(manage_guild=True)
+async def gstart(ctx, duration: str, winners: int, *, prize: str):
+    seconds = parse_time(duration)
+    if not seconds:
+        return await ctx.send("❌ Invalid duration!")
+
+    end_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=seconds)
+
+    embed = create_embed(
+        title="🎉 GIVEAWAY 🎉",
+        description=f"🎁 **{prize}**\n\n"
+                   f"React with 🎉 to enter!\n\n"
+                   f"**Winners:** {winners}\n"
+                   f"**Ends:** <t:{int(end_time.timestamp())}:R>\n"
+                   f"**Hosted by:** {ctx.author.mention}",
+        color=discord.Color.gold()
+    )
+    embed.set_footer(text="Giveaway ends at")
+    embed.timestamp = end_time
+
+    message = await ctx.send(embed=embed)
+    await message.add_reaction("🎉")
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            "INSERT INTO giveaways (message_id, channel_id, guild_id, prize, winners, host_id, end_time) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (message.id, ctx.channel.id, ctx.guild.id, prize, winners, ctx.author.id, end_time.isoformat())
+        )
+        await db.commit()
+
+
+@bot.command()
+@commands.has_permissions(manage_guild=True)
+async def gend(ctx, message_id: int):
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM giveaways WHERE message_id = ? AND ended = 0",
+            (message_id,)
+        )
+        giveaway = await cursor.fetchone()
+
+    if not giveaway:
+        return await ctx.send("❌ Giveaway not found!")
+
+    try:
+        channel = bot.get_channel(giveaway[2])
+        message = await channel.fetch_message(message_id)
+
+        reaction = discord.utils.get(message.reactions, emoji="🎉")
+        users = [user async for user in reaction.users() if not user.bot] if reaction else []
+
+        winners_count = giveaway[5]
+        if len(users) < winners_count:
+            winners_count = len(users)
+
+        if winners_count > 0:
+            winner_list = random.sample(users, winners_count)
+            winner_mentions = ", ".join([w.mention for w in winner_list])
+            await channel.send(f"🎉 Congratulations {winner_mentions}! You won **{giveaway[4]}**!")
+        else:
+            await channel.send("😢 No one entered the giveaway.")
+
+        async with aiosqlite.connect("bot_database.db") as db:
+            await db.execute("UPDATE giveaways SET ended = 1 WHERE message_id = ?", (message_id,))
+            await db.commit()
+
+        await ctx.send("✅ Giveaway ended!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
+
+@bot.command()
+@commands.has_permissions(manage_guild=True)
+async def greroll(ctx, message_id: int):
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM giveaways WHERE message_id = ?",
+            (message_id,)
+        )
+        giveaway = await cursor.fetchone()
+
+    if not giveaway:
+        return await ctx.send("❌ Giveaway not found!")
+
+    try:
+        channel = bot.get_channel(giveaway[2])
+        message = await channel.fetch_message(message_id)
+
+        reaction = discord.utils.get(message.reactions, emoji="🎉")
+        users = [user async for user in reaction.users() if not user.bot] if reaction else []
+
+        if users:
+            winner = random.choice(users)
+            await channel.send(f"🎉 New winner: {winner.mention}! Congratulations, you won **{giveaway[4]}**!")
+        else:
+            await ctx.send("❌ No valid participants found.")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MUSIC SYSTEM - NEW (Requires Lavalink + wavelink)
+# ══════════════════════════════════════════════════════════════════════════════
+
+music_queues = {}
+music_247 = set()
+
+
+@bot.command()
+async def join(ctx):
+    """Join your voice channel"""
+    if not WAVELINK_AVAILABLE:
+        return await ctx.send("❌ Music is unavailable (wavelink not installed)")
+    if not ctx.author.voice:
+        return await ctx.send("❌ You must be in a voice channel!")
+
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+        vc.autoplay = wavelink.AutoPlayMode.disabled
+        await ctx.send(f"✅ Joined **{ctx.author.voice.channel.name}**")
+    elif vc.channel != ctx.author.voice.channel:
+        await vc.move_to(ctx.author.voice.channel)
+        await ctx.send(f"✅ Moved to **{ctx.author.voice.channel.name}**")
+    else:
+        await ctx.send("❌ I'm already in your channel!")
+
+
+@bot.command()
+async def leave(ctx):
+    """Leave the voice channel"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        return await ctx.send("❌ I'm not in a voice channel!")
+    guild_id = ctx.guild.id
+    if guild_id in music_queues:
+        music_queues[guild_id].clear()
+    await vc.disconnect()
+    await ctx.send("✅ Disconnected from voice channel")
+
+
+@bot.command()
+async def play(ctx, *, query: str):
+    """Play a song from YouTube/SoundCloud/URL"""
+    if not WAVELINK_AVAILABLE:
+        return await ctx.send("❌ Music is unavailable (wavelink not installed or Lavalink not running)")
+    if not ctx.author.voice:
+        return await ctx.send("❌ You must be in a voice channel!")
+
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+        vc.autoplay = wavelink.AutoPlayMode.disabled
+
+    try:
+        tracks = await wavelink.Playable.search(query)
+        if not tracks:
+            return await ctx.send("❌ No results found!")
+
+        guild_id = ctx.guild.id
+        if guild_id not in music_queues:
+            music_queues[guild_id] = []
+
+        if isinstance(tracks, wavelink.Playlist):
+            for track in tracks.tracks:
+                music_queues[guild_id].append(track)
+            await ctx.send(f"✅ Added **{len(tracks.tracks)}** tracks from playlist **{tracks.name}**")
+        else:
+            track = tracks[0]
+            music_queues[guild_id].append(track)
+            if vc.playing:
+                await ctx.send(f"✅ Added to queue: **{track.title}**")
+
+        if not vc.playing:
+            next_track = music_queues[guild_id].pop(0)
+            await vc.play(next_track)
+            embed = create_embed(
+                title="🎵 Now Playing",
+                description=f"**{next_track.title}**\nby {next_track.author}",
+                color=discord.Color.red()
+            )
+            embed.add_field(name="Duration", value=f"{next_track.length // 60000}:{(next_track.length // 1000) % 60:02d}", inline=True)
+            embed.add_field(name="Requested by", value=ctx.author.mention, inline=True)
+            await ctx.send(embed=embed)
+
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
+
+@bot.event
+async def on_wavelink_track_end(payload: wavelink.TrackEndEventPayload):
+    player = payload.player
+    if not player or not player.guild:
+        return
+
+    guild_id = player.guild.id
+
+    if guild_id in music_queues and music_queues[guild_id]:
+        next_track = music_queues[guild_id].pop(0)
+        await player.play(next_track)
+    elif guild_id not in music_247:
+        await asyncio.sleep(300)
+        if not player.playing and guild_id not in music_247:
+            try:
+                await player.disconnect()
+            except:
+                pass
+
+
+@bot.command()
+async def pause(ctx):
+    """Pause the current song"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc or not vc.playing:
+        return await ctx.send("❌ Nothing is playing!")
+    await vc.pause(True)
+    await ctx.send("⏸️ Paused")
+
+
+@bot.command()
+async def resume(ctx):
+    """Resume playback"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        return await ctx.send("❌ Nothing is playing!")
+    await vc.pause(False)
+    await ctx.send("▶️ Resumed")
+
+
+@bot.command()
+async def skip(ctx):
+    """Skip the current song"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc or not vc.playing:
+        return await ctx.send("❌ Nothing is playing!")
+    await vc.stop()
+    await ctx.send("⏭️ Skipped")
+
+
+@bot.command()
+async def stop(ctx):
+    """Stop playback and clear queue"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        return await ctx.send("
 
 @bot.command()
 async def ticket(ctx):
@@ -2808,4 +3151,4 @@ async def ticket(ctx):
     overwrites = {
         ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
         ctx.author: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True),
-        ctx.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages
+        
