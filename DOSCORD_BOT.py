@@ -2720,3 +2720,592 @@ async def tradedecline(ctx, trade_id: int):
 
     await ctx.send(f"✅ Trade #{trade_id} has been declined.")
 
+# ══════════════════════════════════════════════════════════════════════════════
+# TICKET COMMANDS (FIXED - Button Panel + Legacy)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def ticketpanel(ctx, channel: discord.TextChannel = None):
+    """Post a ticket panel with a Create Ticket button"""
+    channel = channel or ctx.channel
+    embed = create_embed(
+        title="🎫 Support Tickets",
+        description=(
+            "Need help? Click the button below to create a ticket!\n\n"
+            "📩 A private channel will be created for you.\n"
+            "🔒 Staff will assist you shortly.\n\n"
+            "**Please don't spam tickets.**"
+        ),
+        color=discord.Color.blurple()
+    )
+    if ctx.guild.icon:
+        embed.set_thumbnail(url=ctx.guild.icon.url)
+
+    await channel.send(embed=embed, view=TicketPanelView())
+    await ctx.send(f"✅ Ticket panel posted in {channel.mention}", delete_after=5)
+    try:
+        await ctx.message.delete()
+    except:
+        pass
+
+
+@bot.command()
+async def ticket(ctx):
+    """Create a ticket via command (legacy)"""
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM tickets WHERE user_id = ? AND guild_id = ? AND status = 'open'",
+            (ctx.author.id, ctx.guild.id)
+        )
+        existing = await cursor.fetchone()
+
+    if existing:
+        return await ctx.send(f"❌ You already have an open ticket: <#{existing[1]}>")
+
+    category = ctx.guild.get_channel(CONFIG.get("TICKET_CATEGORY")) if CONFIG.get("TICKET_CATEGORY") else None
+
+    overwrites = {
+        ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        ctx.author: discord.PermissionOverwrite(
+            view_channel=True, send_messages=True, attach_files=True, embed_links=True
+        ),
+        ctx.guild.me: discord.PermissionOverwrite(
+            view_channel=True, send_messages=True, manage_channels=True, manage_messages=True
+        )
+    }
+
+    for mod_role_id in CONFIG.get("MOD_ROLES", []):
+        mod_role = ctx.guild.get_role(mod_role_id)
+        if mod_role:
+            overwrites[mod_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+
+    for admin_role_id in CONFIG.get("ADMIN_ROLES", []):
+        admin_role = ctx.guild.get_role(admin_role_id)
+        if admin_role:
+            overwrites[admin_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+
+    channel = await ctx.guild.create_text_channel(
+        f"ticket-{ctx.author.name}".replace(" ", "-").lower()[:50],
+        category=category if isinstance(category, discord.CategoryChannel) else None,
+        overwrites=overwrites,
+        topic=f"Support ticket for {ctx.author} ({ctx.author.id})"
+    )
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            "INSERT INTO tickets (channel_id, user_id, guild_id) VALUES (?, ?, ?)",
+            (channel.id, ctx.author.id, ctx.guild.id)
+        )
+        await db.commit()
+
+    embed = create_embed(
+        title="🎫 Support Ticket",
+        description=(
+            f"Welcome {ctx.author.mention}!\n\n"
+            f"Please describe your issue below.\n"
+            f"A staff member will assist you shortly.\n\n"
+            f"Click 🔒 **Close Ticket** when done."
+        ),
+        color=discord.Color.green(),
+        footer=f"Ticket by {ctx.author.name}"
+    )
+    await channel.send(ctx.author.mention, embed=embed, view=TicketControlView())
+    await ctx.send(f"✅ Ticket created: {channel.mention}")
+
+
+@bot.command()
+async def close(ctx):
+    """Close a ticket"""
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
+            (ctx.channel.id,)
+        )
+        ticket_data = await cursor.fetchone()
+
+    if not ticket_data:
+        return await ctx.send("❌ This is not a ticket channel!")
+
+    await ctx.send("🔒 Closing ticket in 5 seconds...")
+    await asyncio.sleep(5)
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            "UPDATE tickets SET status = 'closed', closed_at = ? WHERE channel_id = ?",
+            (datetime.datetime.utcnow().isoformat(), ctx.channel.id)
+        )
+        await db.commit()
+
+    await ctx.channel.delete()
+
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def add(ctx, member: discord.Member):
+    """Add a user to a ticket"""
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
+            (ctx.channel.id,)
+        )
+        ticket_data = await cursor.fetchone()
+
+    if not ticket_data:
+        return await ctx.send("❌ This is not a ticket channel!")
+
+    await ctx.channel.set_permissions(member, view_channel=True, send_messages=True)
+    await ctx.send(f"✅ Added {member.mention} to the ticket")
+
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def remove(ctx, member: discord.Member):
+    """Remove a user from a ticket"""
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
+            (ctx.channel.id,)
+        )
+        ticket_data = await cursor.fetchone()
+
+    if not ticket_data:
+        return await ctx.send("❌ This is not a ticket channel!")
+
+    await ctx.channel.set_permissions(member, overwrite=None)
+    await ctx.send(f"✅ Removed {member.mention} from the ticket")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GIVEAWAY COMMANDS (FIXED)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@bot.command()
+@commands.has_permissions(manage_guild=True)
+async def gstart(ctx, duration: str, winners: int, *, prize: str):
+    seconds = parse_time(duration)
+    if not seconds:
+        return await ctx.send("❌ Invalid duration!")
+
+    end_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=seconds)
+
+    embed = create_embed(
+        title="🎉 GIVEAWAY 🎉",
+        description=f"🎁 **{prize}**\n\n"
+                   f"React with 🎉 to enter!\n\n"
+                   f"**Winners:** {winners}\n"
+                   f"**Ends:** <t:{int(end_time.timestamp())}:R>\n"
+                   f"**Hosted by:** {ctx.author.mention}",
+        color=discord.Color.gold()
+    )
+    embed.set_footer(text="Giveaway ends at")
+    embed.timestamp = end_time
+
+    message = await ctx.send(embed=embed)
+    await message.add_reaction("🎉")
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            "INSERT INTO giveaways (message_id, channel_id, guild_id, prize, winners, host_id, end_time) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (message.id, ctx.channel.id, ctx.guild.id, prize, winners, ctx.author.id, end_time.isoformat())
+        )
+        await db.commit()
+
+
+@bot.command()
+@commands.has_permissions(manage_guild=True)
+async def gend(ctx, message_id: int):
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM giveaways WHERE message_id = ? AND ended = 0",
+            (message_id,)
+        )
+        giveaway = await cursor.fetchone()
+
+    if not giveaway:
+        return await ctx.send("❌ Giveaway not found!")
+
+    try:
+        channel = bot.get_channel(giveaway[2])
+        message = await channel.fetch_message(message_id)
+
+        reaction = discord.utils.get(message.reactions, emoji="🎉")
+        users = [user async for user in reaction.users() if not user.bot] if reaction else []
+
+        winners_count = giveaway[5]
+        if len(users) < winners_count:
+            winners_count = len(users)
+
+        if winners_count > 0:
+            winner_list = random.sample(users, winners_count)
+            winner_mentions = ", ".join([w.mention for w in winner_list])
+            await channel.send(f"🎉 Congratulations {winner_mentions}! You won **{giveaway[4]}**!")
+        else:
+            await channel.send("😢 No one entered the giveaway.")
+
+        async with aiosqlite.connect("bot_database.db") as db:
+            await db.execute("UPDATE giveaways SET ended = 1 WHERE message_id = ?", (message_id,))
+            await db.commit()
+
+        await ctx.send("✅ Giveaway ended!")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
+
+@bot.command()
+@commands.has_permissions(manage_guild=True)
+async def greroll(ctx, message_id: int):
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT * FROM giveaways WHERE message_id = ?",
+            (message_id,)
+        )
+        giveaway = await cursor.fetchone()
+
+    if not giveaway:
+        return await ctx.send("❌ Giveaway not found!")
+
+    try:
+        channel = bot.get_channel(giveaway[2])
+        message = await channel.fetch_message(message_id)
+
+        reaction = discord.utils.get(message.reactions, emoji="🎉")
+        users = [user async for user in reaction.users() if not user.bot] if reaction else []
+
+        if users:
+            winner = random.choice(users)
+            await channel.send(f"🎉 New winner: {winner.mention}! Congratulations, you won **{giveaway[4]}**!")
+        else:
+            await ctx.send("❌ No valid participants found.")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MUSIC SYSTEM - COMPLETE (Requires Lavalink + wavelink)
+# ══════════════════════════════════════════════════════════════════════════════
+
+music_queues = {}
+music_247 = set()
+music_loop = {}  # guild_id: "off" | "track" | "queue"
+
+
+@bot.command()
+async def join(ctx):
+    """Join your voice channel"""
+    if not WAVELINK_AVAILABLE:
+        return await ctx.send("❌ Music is unavailable (wavelink not installed)")
+    if not ctx.author.voice:
+        return await ctx.send("❌ You must be in a voice channel!")
+
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+        vc.autoplay = wavelink.AutoPlayMode.disabled
+        await ctx.send(f"✅ Joined **{ctx.author.voice.channel.name}**")
+    elif vc.channel != ctx.author.voice.channel:
+        await vc.move_to(ctx.author.voice.channel)
+        await ctx.send(f"✅ Moved to **{ctx.author.voice.channel.name}**")
+    else:
+        await ctx.send("❌ I'm already in your channel!")
+
+
+@bot.command()
+async def leave(ctx):
+    """Leave the voice channel"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        return await ctx.send("❌ I'm not in a voice channel!")
+    guild_id = ctx.guild.id
+    if guild_id in music_queues:
+        music_queues[guild_id].clear()
+    if guild_id in music_247:
+        music_247.discard(guild_id)
+    await vc.disconnect()
+    await ctx.send("✅ Disconnected from voice channel")
+
+
+@bot.command()
+async def play(ctx, *, query: str):
+    """Play a song from YouTube/SoundCloud/URL"""
+    if not WAVELINK_AVAILABLE:
+        return await ctx.send("❌ Music is unavailable (wavelink not installed or Lavalink not running)")
+    if not ctx.author.voice:
+        return await ctx.send("❌ You must be in a voice channel!")
+
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+        vc.autoplay = wavelink.AutoPlayMode.disabled
+
+    try:
+        tracks = await wavelink.Playable.search(query)
+        if not tracks:
+            return await ctx.send("❌ No results found!")
+
+        guild_id = ctx.guild.id
+        if guild_id not in music_queues:
+            music_queues[guild_id] = []
+
+        if isinstance(tracks, wavelink.Playlist):
+            for track in tracks.tracks:
+                music_queues[guild_id].append(track)
+            await ctx.send(f"✅ Added **{len(tracks.tracks)}** tracks from playlist **{tracks.name}**")
+        else:
+            track = tracks[0]
+            music_queues[guild_id].append(track)
+            if vc.playing:
+                await ctx.send(f"✅ Added to queue: **{track.title}**")
+
+        if not vc.playing:
+            next_track = music_queues[guild_id].pop(0)
+            await vc.play(next_track)
+            embed = create_embed(
+                title="🎵 Now Playing",
+                description=f"**{next_track.title}**\nby {next_track.author}",
+                color=discord.Color.red()
+            )
+            embed.add_field(
+                name="Duration",
+                value=f"{next_track.length // 60000}:{(next_track.length // 1000) % 60:02d}",
+                inline=True
+            )
+            embed.add_field(name="Requested by", value=ctx.author.mention, inline=True)
+            await ctx.send(embed=embed)
+
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
+
+@bot.event
+async def on_wavelink_track_end(payload: wavelink.TrackEndEventPayload):
+    player = payload.player
+    if not player or not player.guild:
+        return
+
+    guild_id = player.guild.id
+    loop_mode = music_loop.get(guild_id, "off")
+
+    # Handle loop modes
+    if loop_mode == "track" and payload.track:
+        await player.play(payload.track)
+        return
+
+    if loop_mode == "queue" and payload.track:
+        if guild_id not in music_queues:
+            music_queues[guild_id] = []
+        music_queues[guild_id].append(payload.track)
+
+    if guild_id in music_queues and music_queues[guild_id]:
+        next_track = music_queues[guild_id].pop(0)
+        await player.play(next_track)
+    elif guild_id not in music_247:
+        await asyncio.sleep(300)
+        if not player.playing and guild_id not in music_247:
+            try:
+                await player.disconnect()
+            except:
+                pass
+
+
+@bot.command()
+async def pause(ctx):
+    """Pause the current song"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc or not vc.playing:
+        return await ctx.send("❌ Nothing is playing!")
+    await vc.pause(True)
+    await ctx.send("⏸️ Paused")
+
+
+@bot.command()
+async def resume(ctx):
+    """Resume playback"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        return await ctx.send("❌ Nothing is playing!")
+    await vc.pause(False)
+    await ctx.send("▶️ Resumed")
+
+
+@bot.command()
+async def skip(ctx):
+    """Skip the current song"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc or not vc.playing:
+        return await ctx.send("❌ Nothing is playing!")
+    await vc.stop()
+    await ctx.send("⏭️ Skipped")
+
+
+@bot.command()
+async def stop(ctx):
+    """Stop playback and clear queue"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        return await ctx.send("❌ I'm not in a voice channel!")
+
+    guild_id = ctx.guild.id
+    if guild_id in music_queues:
+        music_queues[guild_id].clear()
+    if guild_id in music_loop:
+        music_loop[guild_id] = "off"
+
+    await vc.stop()
+    await ctx.send("⏹️ Stopped playback and cleared queue")
+
+
+@bot.command()
+async def queue(ctx, page: int = 1):
+    """View the music queue"""
+    guild_id = ctx.guild.id
+    vc: wavelink.Player = ctx.voice_client
+
+    if not vc:
+        return await ctx.send("❌ I'm not in a voice channel!")
+
+    q = music_queues.get(guild_id, [])
+    current = vc.current if vc else None
+
+    if not current and not q:
+        return await ctx.send("❌ Queue is empty!")
+
+    description = ""
+    if current:
+        dur = f"{current.length // 60000}:{(current.length // 1000) % 60:02d}"
+        description += f"**Now Playing:**\n🎵 [{current.title}]({current.uri}) — `{dur}`\n\n"
+
+    if q:
+        description += "**Up Next:**\n"
+        items_per_page = 10
+        start = (page - 1) * items_per_page
+        end = start + items_per_page
+        total_pages = math.ceil(len(q) / items_per_page)
+
+        for i, track in enumerate(q[start:end], start=start + 1):
+            dur = f"{track.length // 60000}:{(track.length // 1000) % 60:02d}"
+            description += f"`{i}.` [{track.title}]({track.uri}) — `{dur}`\n"
+
+        description += f"\n**{len(q)} tracks in queue**"
+        if total_pages > 1:
+            description += f" | Page {page}/{total_pages}"
+    else:
+        description += "\n*No more tracks in queue*"
+
+    loop_mode = music_loop.get(guild_id, "off")
+    if loop_mode != "off":
+        description += f"\n🔁 Loop: **{loop_mode}**"
+
+    embed = create_embed(
+        title="🎶 Music Queue",
+        description=description,
+        color=discord.Color.red()
+    )
+    await ctx.send(embed=embed)
+
+
+@bot.command(aliases=["np", "playing"])
+async def nowplaying(ctx):
+    """Show the currently playing song"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc or not vc.current:
+        return await ctx.send("❌ Nothing is playing!")
+
+    track = vc.current
+    position = vc.position
+    duration = track.length
+
+    pos_str = f"{position // 60000}:{(position // 1000) % 60:02d}"
+    dur_str = f"{duration // 60000}:{(duration // 1000) % 60:02d}"
+
+    if duration > 0:
+        progress = int((position / duration) * 20)
+    else:
+        progress = 0
+    bar = "▬" * progress + "🔘" + "▬" * (20 - progress)
+
+    guild_id = ctx.guild.id
+    loop_mode = music_loop.get(guild_id, "off")
+
+    embed = create_embed(
+        title="🎵 Now Playing",
+        description=f"**[{track.title}]({track.uri})**\nby **{track.author}**",
+        color=discord.Color.red()
+    )
+    embed.add_field(name="Progress", value=f"`{pos_str}` {bar} `{dur_str}`", inline=False)
+    embed.add_field(name="Loop", value=loop_mode.title(), inline=True)
+    embed.add_field(
+        name="Queue",
+        value=f"{len(music_queues.get(guild_id, []))} tracks",
+        inline=True
+    )
+    await ctx.send(embed=embed)
+
+
+@bot.command(aliases=["vol"])
+async def volume(ctx, vol: int):
+    """Set volume (0-100)"""
+    vc: wavelink.Player = ctx.voice_client
+    if not vc:
+        return await ctx.send("❌ I'm not in a voice channel!")
+    if vol < 0 or vol > 100:
+        return await ctx.send("❌ Volume must be between 0 and 100!")
+
+    await vc.set_volume(vol)
+    emoji = "🔇" if vol == 0 else "🔉" if vol < 50 else "🔊"
+    await ctx.send(f"{emoji} Volume set to **{vol}%**")
+
+
+@bot.command()
+async def loop(ctx, mode: str = None):
+    """Toggle loop mode: off, track, queue"""
+    guild_id = ctx.guild.id
+    current = music_loop.get(guild_id, "off")
+
+    if mode:
+        mode = mode.lower()
+        if mode not in ("off", "track", "queue"):
+            return await ctx.send("❌ Valid modes: `off`, `track`, `queue`")
+        music_loop[guild_id] = mode
+    else:
+        # Cycle: off -> track -> queue -> off
+        cycle = {"off": "track", "track": "queue", "queue": "off"}
+        music_loop[guild_id] = cycle.get(current, "off")
+
+    new_mode = music_loop[guild_id]
+    emojis = {"off": "➡️", "track": "🔂", "queue": "🔁"}
+    await ctx.send(f"{emojis.get(new_mode, '🔁')} Loop mode: **{new_mode}**")
+
+
+@bot.command()
+async def shuffle(ctx):
+    """Shuffle the queue"""
+    guild_id = ctx.guild.id
+    q = music_queues.get(guild_id, [])
+    if len(q) < 2:
+        return await ctx.send("❌ Not enough tracks to shuffle!")
+
+    random.shuffle(q)
+    await ctx.send(f"🔀 Shuffled **{len(q)}** tracks!")
+
+
+@bot.command(name="247")
+async def twentyfourseven(ctx):
+    """Toggle 24/7 mode - bot stays in VC"""
+    guild_id = ctx.guild.id
+
+    if guild_id in music_247:
+        music_247.discard(guild_id)
+        await ctx.send("❌ 24/7 mode **disabled**. Bot will leave after inactivity.")
+    else:
+        music_247.add(guild_id)
+        await ctx.send("✅ 24/7 mode **enabled**. Bot will stay in VC permanently.")
+
+        # Auto-join configured channel if not in VC
+        vc: wavelink.Player = ctx.voice_client
+        if not vc and ctx.author.voice:
+            vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+            vc.autoplay = wavelink.AutoPlayMode.disabled
+            await ctx.send(f"✅ Joined **{ctx.author.voice.channel.name}** in 24/7 mode")
+
+
