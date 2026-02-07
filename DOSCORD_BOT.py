@@ -3159,7 +3159,7 @@ async def stop(ctx):
 async def queue(ctx, page: int = 1):
     """View the music queue"""
     guild_id = ctx.guild.id
-   vc = ctx.voice_client
+    vc = ctx.voice_client
 
     if not vc:
         return await ctx.send("❌ I'm not in a voice channel!")
