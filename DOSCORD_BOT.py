@@ -2998,7 +2998,7 @@ async def join(ctx):
     if not ctx.author.voice:
         return await ctx.send("❌ You must be in a voice channel!")
 
-    vc: wavelink.Player = ctx.voice_client
+    vc = ctx.voice_client
     if not vc:
         vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
         vc.autoplay = wavelink.AutoPlayMode.disabled
@@ -3013,7 +3013,7 @@ async def join(ctx):
 @bot.command()
 async def leave(ctx):
     """Leave the voice channel"""
-    vc: wavelink.Player = ctx.voice_client
+    vc = ctx.voice_client
     if not vc:
         return await ctx.send("❌ I'm not in a voice channel!")
     guild_id = ctx.guild.id
@@ -3033,7 +3033,7 @@ async def play(ctx, *, query: str):
     if not ctx.author.voice:
         return await ctx.send("❌ You must be in a voice channel!")
 
-    vc: wavelink.Player = ctx.voice_client
+    vc = ctx.voice_client
     if not vc:
         vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
         vc.autoplay = wavelink.AutoPlayMode.disabled
@@ -3111,7 +3111,7 @@ if WAVELINK_AVAILABLE:
 @bot.command()
 async def pause(ctx):
     """Pause the current song"""
-    vc: wavelink.Player = ctx.voice_client
+    vc = ctx.voice_client
     if not vc or not vc.playing:
         return await ctx.send("❌ Nothing is playing!")
     await vc.pause(True)
@@ -3121,7 +3121,7 @@ async def pause(ctx):
 @bot.command()
 async def resume(ctx):
     """Resume playback"""
-    vc: wavelink.Player = ctx.voice_client
+    vc = ctx.voice_client
     if not vc:
         return await ctx.send("❌ Nothing is playing!")
     await vc.pause(False)
@@ -3131,7 +3131,7 @@ async def resume(ctx):
 @bot.command()
 async def skip(ctx):
     """Skip the current song"""
-    vc: wavelink.Player = ctx.voice_client
+    vc = ctx.voice_client
     if not vc or not vc.playing:
         return await ctx.send("❌ Nothing is playing!")
     await vc.stop()
@@ -3141,7 +3141,7 @@ async def skip(ctx):
 @bot.command()
 async def stop(ctx):
     """Stop playback and clear queue"""
-    vc: wavelink.Player = ctx.voice_client
+    vc = ctx.voice_client
     if not vc:
         return await ctx.send("❌ I'm not in a voice channel!")
 
@@ -3159,7 +3159,7 @@ async def stop(ctx):
 async def queue(ctx, page: int = 1):
     """View the music queue"""
     guild_id = ctx.guild.id
-    vc: wavelink.Player = ctx.voice_client
+   vc = ctx.voice_client
 
     if not vc:
         return await ctx.send("❌ I'm not in a voice channel!")
@@ -3207,7 +3207,7 @@ async def queue(ctx, page: int = 1):
 @bot.command(aliases=["np", "playing"])
 async def nowplaying(ctx):
     """Show the currently playing song"""
-    vc: wavelink.Player = ctx.voice_client
+    vc = ctx.voice_client
     if not vc or not vc.current:
         return await ctx.send("❌ Nothing is playing!")
 
@@ -3245,7 +3245,7 @@ async def nowplaying(ctx):
 @bot.command(aliases=["vol"])
 async def volume(ctx, vol: int):
     """Set volume (0-100)"""
-    vc: wavelink.Player = ctx.voice_client
+    vc = ctx.voice_client
     if not vc:
         return await ctx.send("❌ I'm not in a voice channel!")
     if vol < 0 or vol > 100:
@@ -3302,7 +3302,7 @@ async def twentyfourseven(ctx):
         await ctx.send("✅ 24/7 mode **enabled**. Bot will stay in VC permanently.")
 
         # Auto-join configured channel if not in VC
-        vc: wavelink.Player = ctx.voice_client
+        vc = ctx.voice_client
         if not vc and ctx.author.voice:
             vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
             vc.autoplay = wavelink.AutoPlayMode.disabled
