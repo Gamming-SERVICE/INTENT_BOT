@@ -2280,7 +2280,6 @@ async def baltop(ctx, page: int = 1):
 
 @bot.command(aliases=["shop"])
 async def market(ctx, category: str = None, page: int = 1):
-    """Browse the marketplace. Prices change based on supply/demand!"""
     async with aiosqlite.connect("bot_database.db") as db:
         if category:
             cursor = await db.execute(
@@ -2296,7 +2295,6 @@ async def market(ctx, category: str = None, page: int = 1):
     if not items:
         return await ctx.send("❌ No items found!" + (f" Category `{category}` doesn't exist." if category else ""))
 
-    # Build pages (10 items per page)
     pages = []
     items_per_page = 10
     total_pages = math.ceil(len(items) / items_per_page)
@@ -2308,15 +2306,11 @@ async def market(ctx, category: str = None, page: int = 1):
 
         description = ""
         for item in page_items:
-            # 0=item_id, 1=name, 2=category, 3=description, 4=emoji,
-            # 5=base_price, 6=current_price, 7=total_bought, 8=total_sold,
-            # 9=rarity, 10=tradeable
             price = round(item[6])
             base = item[5]
             change = "📈" if price > base else "📉" if price < base else "➡️"
             rarity_icons = {"common": "⬜", "uncommon": "🟩", "rare": "🟦", "epic": "🟪", "legendary": "🟨"}
             rarity_icon = rarity_icons.get(item[9], "⬜")
-
             description += (
                 f"{rarity_icon} `#{item[0]:>3}` {item[4]} **{item[1]}** — "
                 f"{CONFIG['CURRENCY_SYMBOL']} **{price:,}** {change}\n"
@@ -2326,20 +2320,18 @@ async def market(ctx, category: str = None, page: int = 1):
             title=f"🛒 Marketplace" + (f" — {category.title()}" if category else ""),
             description=description,
             color=discord.Color.teal(),
-            footer=f"Page {pg + 1}/{total_pages} | Use !mbuy <id> [qty] to buy | !msell <id> [qty] to sell"
+            footer=f"Page {pg + 1}/{total_pages} | !mbuy <id> [qty] | !msell <id> [qty]"
         )
         pages.append(embed)
 
     if page > len(pages):
         page = len(pages)
-
     view = MarketPageView(pages, current_page=page - 1, author_id=ctx.author.id) if len(pages) > 1 else None
     await ctx.send(embed=pages[page - 1], view=view)
 
 
 @bot.command()
 async def mcategories(ctx):
-    """List all market categories"""
     async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT DISTINCT category, COUNT(*) FROM market_items GROUP BY category ORDER BY category"
@@ -2354,25 +2346,18 @@ async def mcategories(ctx):
         "collectibles": "🃏", "tech": "💻", "premium": "🌐",
         "nature": "🌿", "magic": "🔮", "vehicles": "🚗", "pets": "🐾"
     }
-
     description = ""
     for cat, count in cats:
         emoji = cat_emojis.get(cat, "📦")
         description += f"{emoji} **{cat.title()}** — {count} items\n"
-
     description += f"\nUse `!market <category>` to browse!"
 
-    embed = create_embed(
-        title="📂 Market Categories",
-        description=description,
-        color=discord.Color.teal()
-    )
+    embed = create_embed(title="📂 Market Categories", description=description, color=discord.Color.teal())
     await ctx.send(embed=embed)
 
 
 @bot.command()
 async def minfo(ctx, item_id: int):
-    """View detailed info about a market item"""
     async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute("SELECT * FROM market_items WHERE item_id = ?", (item_id,))
         item = await cursor.fetchone()
@@ -2385,9 +2370,7 @@ async def minfo(ctx, item_id: int):
     change_pct = ((price - base) / base * 100) if base > 0 else 0
 
     embed = create_embed(
-        title=f"{item[4]} {item[1]}",
-        description=item[3],
-        color=get_rarity_color(item[9])
+        title=f"{item[4]} {item[1]}", description=item[3], color=get_rarity_color(item[9])
     )
     embed.add_field(name="Category", value=item[2].title(), inline=True)
     embed.add_field(name="Rarity", value=item[9].title(), inline=True)
@@ -2398,26 +2381,22 @@ async def minfo(ctx, item_id: int):
     embed.add_field(name="Total Bought", value=f"{item[7]:,}", inline=True)
     embed.add_field(name="Total Sold", value=f"{item[8]:,}", inline=True)
     embed.set_footer(text=f"Item ID: {item[0]}")
-
     await ctx.send(embed=embed)
 
 
 @bot.command()
 async def mbuy(ctx, item_id: int, quantity: int = 1):
-    """Buy items from the market. Price increases with demand!"""
     if quantity <= 0:
         return await ctx.send("❌ Quantity must be positive!")
 
     async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute("SELECT * FROM market_items WHERE item_id = ?", (item_id,))
         item = await cursor.fetchone()
-
         if not item:
             return await ctx.send("❌ Item not found!")
 
         price_per = round(item[6])
         total_cost = price_per * quantity
-
         user_data = await get_user_data(ctx.author.id, ctx.guild.id)
         if user_data["balance"] < total_cost:
             return await ctx.send(
@@ -2426,10 +2405,7 @@ async def mbuy(ctx, item_id: int, quantity: int = 1):
                 f"you have {CONFIG['CURRENCY_SYMBOL']} **{user_data['balance']:,}**"
             )
 
-        # Deduct money
         await update_user_data(ctx.author.id, ctx.guild.id, balance=user_data["balance"] - total_cost)
-
-        # Add to user_items
         await db.execute(
             """INSERT INTO user_items (user_id, guild_id, item_id, quantity)
                VALUES (?, ?, ?, ?)
@@ -2437,11 +2413,8 @@ async def mbuy(ctx, item_id: int, quantity: int = 1):
                DO UPDATE SET quantity = quantity + ?""",
             (ctx.author.id, ctx.guild.id, item_id, quantity, quantity)
         )
-
-        # Update market stats & recalculate price
         new_bought = item[7] + quantity
         new_price = calculate_market_price(item[5], new_bought, item[8])
-
         await db.execute(
             "UPDATE market_items SET total_bought = ?, current_price = ? WHERE item_id = ?",
             (new_bought, new_price, item_id)
@@ -2462,32 +2435,24 @@ async def mbuy(ctx, item_id: int, quantity: int = 1):
 
 @bot.command()
 async def msell(ctx, item_id: int, quantity: int = 1):
-    """Sell items back to the market. Selling lowers the price!"""
     if quantity <= 0:
         return await ctx.send("❌ Quantity must be positive!")
 
     async with aiosqlite.connect("bot_database.db") as db:
-        # Check user has items
         cursor = await db.execute(
             "SELECT quantity FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
             (ctx.author.id, ctx.guild.id, item_id)
         )
         row = await cursor.fetchone()
-
         if not row or row[0] < quantity:
-            return await ctx.send(f"❌ You don't have enough of this item! (You have {row[0] if row else 0})")
+            return await ctx.send(f"❌ You don't have enough! (You have {row[0] if row else 0})")
 
-        # Get item info
         cursor = await db.execute("SELECT * FROM market_items WHERE item_id = ?", (item_id,))
         item = await cursor.fetchone()
-
         if not item:
             return await ctx.send("❌ Item not found!")
 
-        # Sell price is 70% of current price
         sell_price = round(item[6] * 0.7) * quantity
-
-        # Remove items
         new_qty = row[0] - quantity
         if new_qty <= 0:
             await db.execute(
@@ -2500,15 +2465,12 @@ async def msell(ctx, item_id: int, quantity: int = 1):
                 (new_qty, ctx.author.id, ctx.guild.id, item_id)
             )
 
-        # Add money
         user_data = await get_user_data(ctx.author.id, ctx.guild.id)
         await update_user_data(ctx.author.id, ctx.guild.id, balance=user_data["balance"] + sell_price)
 
-        # Update market stats & price
         new_sold = item[8] + quantity
         new_price = calculate_market_price(item[5], item[7], new_sold)
-
-                await db.execute(
+        await db.execute(
             "UPDATE market_items SET total_sold = ?, current_price = ? WHERE item_id = ?",
             (new_sold, new_price, item_id)
         )
@@ -2528,9 +2490,7 @@ async def msell(ctx, item_id: int, quantity: int = 1):
 
 @bot.command()
 async def minv(ctx, member: discord.Member = None):
-    """View your market inventory"""
     member = member or ctx.author
-
     async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             """SELECT ui.quantity, mi.name, mi.emoji, mi.rarity, mi.item_id, mi.current_price
@@ -2543,7 +2503,7 @@ async def minv(ctx, member: discord.Member = None):
         items = await cursor.fetchall()
 
     if not items:
-        return await ctx.send(f"❌ {member.name}'s market inventory is empty! Use `!mbuy` to buy items.")
+        return await ctx.send(f"❌ {member.name}'s market inventory is empty!")
 
     description = ""
     total_value = 0
@@ -2554,212 +2514,13 @@ async def minv(ctx, member: discord.Member = None):
         ri = rarity_icons.get(rarity, "⬜")
         description += f"{ri} {emoji} **{name}** x{qty} — ~{CONFIG['CURRENCY_SYMBOL']} {value:,}\n"
 
-    description += f"\n**Total estimated sell value:** {CONFIG['CURRENCY_SYMBOL']} {total_value:,}"
-
+    description += f"\n**Total sell value:** {CONFIG['CURRENCY_SYMBOL']} {total_value:,}"
     embed = create_embed(
         title=f"🎒 {member.name}'s Market Inventory",
-        description=description,
-        color=discord.Color.orange()
+        description=description, color=discord.Color.orange()
     )
     await ctx.send(embed=embed)
-
-
-@bot.command()
-async def trade(ctx, member: discord.Member, item_id: int, quantity: int = 1, price: int = 0):
-    """Offer a trade to another player. !trade @user <item_id> <qty> <price>"""
-    if member == ctx.author:
-        return await ctx.send("❌ You can't trade with yourself!")
-    if member.bot:
-        return await ctx.send("❌ You can't trade with bots!")
-    if quantity <= 0:
-        return await ctx.send("❌ Quantity must be positive!")
-    if price < 0:
-        return await ctx.send("❌ Price can't be negative!")
-
-    async with aiosqlite.connect("bot_database.db") as db:
-        # Check sender has items
-        cursor = await db.execute(
-            "SELECT quantity FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
-            (ctx.author.id, ctx.guild.id, item_id)
-        )
-        row = await cursor.fetchone()
-
-        if not row or row[0] < quantity:
-            return await ctx.send(f"❌ You don't have enough of this item! (You have {row[0] if row else 0})")
-
-        # Get item info
-        cursor = await db.execute("SELECT name, emoji FROM market_items WHERE item_id = ?", (item_id,))
-        item = await cursor.fetchone()
-        if not item:
-            return await ctx.send("❌ Item not found!")
-
-        # Create trade offer
-        await db.execute(
-            """INSERT INTO trades (guild_id, sender_id, receiver_id, item_id, quantity, price)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (ctx.guild.id, ctx.author.id, member.id, item_id, quantity, price)
-        )
-        await db.commit()
-
-        # Get trade ID
-        cursor = await db.execute("SELECT last_insert_rowid()")
-        trade_id = (await cursor.fetchone())[0]
-
-    price_text = f"for {CONFIG['CURRENCY_SYMBOL']} **{price:,}**" if price > 0 else "**for free**"
-
-    embed = create_embed(
-        title="🤝 Trade Offer!",
-        description=(
-            f"{ctx.author.mention} wants to trade with {member.mention}!\n\n"
-            f"**Offering:** {quantity}x {item[1]} **{item[0]}**\n"
-            f"**Price:** {price_text}\n\n"
-            f"Use `!tradeaccept {trade_id}` to accept\n"
-            f"Use `!tradedecline {trade_id}` to decline"
-        ),
-        color=discord.Color.blue()
-    )
-    await ctx.send(embed=embed)
-
-
-@bot.command()
-async def trades(ctx):
-    """View your pending trades"""
-    async with aiosqlite.connect("bot_database.db") as db:
-        cursor = await db.execute(
-            """SELECT t.id, t.sender_id, t.receiver_id, t.quantity, t.price, mi.name, mi.emoji
-               FROM trades t
-               JOIN market_items mi ON t.item_id = mi.item_id
-               WHERE (t.sender_id = ? OR t.receiver_id = ?) AND t.guild_id = ? AND t.status = 'pending'
-               ORDER BY t.created_at DESC LIMIT 15""",
-            (ctx.author.id, ctx.author.id, ctx.guild.id)
-        )
-        trade_list = await cursor.fetchall()
-
-    if not trade_list:
-        return await ctx.send("❌ You have no pending trades.")
-
-    description = ""
-    for tid, sender, receiver, qty, price, name, emoji in trade_list:
-        direction = "📤 Outgoing" if sender == ctx.author.id else "📥 Incoming"
-        other = f"<@{receiver}>" if sender == ctx.author.id else f"<@{sender}>"
-        price_text = f"{CONFIG['CURRENCY_SYMBOL']} {price:,}" if price > 0 else "Free"
-        description += f"`#{tid}` {direction} → {other}: **{qty}x** {emoji} {name} ({price_text})\n"
-
-    embed = create_embed(
-        title="📋 Your Pending Trades",
-        description=description,
-        color=discord.Color.blue(),
-        footer="Use !tradeaccept <id> or !tradedecline <id>"
-    )
-    await ctx.send(embed=embed)
-
-
-@bot.command()
-async def tradeaccept(ctx, trade_id: int):
-    """Accept a trade offer"""
-    async with aiosqlite.connect("bot_database.db") as db:
-        cursor = await db.execute(
-            "SELECT * FROM trades WHERE id = ? AND receiver_id = ? AND guild_id = ? AND status = 'pending'",
-            (trade_id, ctx.author.id, ctx.guild.id)
-        )
-        trade_data = await cursor.fetchone()
-
-    if not trade_data:
-        return await ctx.send("❌ Trade not found or you're not the receiver!")
-
-    # 0=id, 1=guild_id, 2=sender_id, 3=receiver_id, 4=item_id, 5=quantity, 6=price, 7=status
-    sender_id = trade_data[2]
-    item_id = trade_data[4]
-    quantity = trade_data[5]
-    price = trade_data[6]
-
-    async with aiosqlite.connect("bot_database.db") as db:
-        # Verify sender still has items
-        cursor = await db.execute(
-            "SELECT quantity FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
-            (sender_id, ctx.guild.id, item_id)
-        )
-        sender_items = await cursor.fetchone()
-
-        if not sender_items or sender_items[0] < quantity:
-            await db.execute("UPDATE trades SET status = 'cancelled' WHERE id = ?", (trade_id,))
-            await db.commit()
-            return await ctx.send("❌ Sender no longer has enough items. Trade cancelled.")
-
-        # Check receiver has enough money if price > 0
-        if price > 0:
-            receiver_data = await get_user_data(ctx.author.id, ctx.guild.id)
-            if receiver_data["balance"] < price:
-                return await ctx.send(f"❌ You don't have enough {CONFIG['CURRENCY_NAME']}! Need {CONFIG['CURRENCY_SYMBOL']} {price:,}")
-
-            # Transfer money
-            sender_data = await get_user_data(sender_id, ctx.guild.id)
-            await update_user_data(ctx.author.id, ctx.guild.id, balance=receiver_data["balance"] - price)
-            await update_user_data(sender_id, ctx.guild.id, balance=sender_data["balance"] + price)
-
-        # Transfer items: remove from sender
-        new_sender_qty = sender_items[0] - quantity
-        if new_sender_qty <= 0:
-            await db.execute(
-                "DELETE FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
-                (sender_id, ctx.guild.id, item_id)
-            )
-        else:
-            await db.execute(
-                "UPDATE user_items SET quantity = ? WHERE user_id = ? AND guild_id = ? AND item_id = ?",
-                (new_sender_qty, sender_id, ctx.guild.id, item_id)
-            )
-
-        # Add to receiver
-        await db.execute(
-            """INSERT INTO user_items (user_id, guild_id, item_id, quantity)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(user_id, guild_id, item_id)
-               DO UPDATE SET quantity = quantity + ?""",
-            (ctx.author.id, ctx.guild.id, item_id, quantity, quantity)
-        )
-
-        # Update trade status
-        await db.execute(
-            "UPDATE trades SET status = 'accepted', resolved_at = ? WHERE id = ?",
-            (datetime.datetime.utcnow().isoformat(), trade_id)
-        )
-        await db.commit()
-
-    # Get item name
-    async with aiosqlite.connect("bot_database.db") as db:
-        cursor = await db.execute("SELECT name, emoji FROM market_items WHERE item_id = ?", (item_id,))
-        item = await cursor.fetchone()
-
-    await ctx.send(
-        f"✅ Trade #{trade_id} completed! {ctx.author.mention} received **{quantity}x** {item[1]} **{item[0]}** "
-        f"from <@{sender_id}>" + (f" for {CONFIG['CURRENCY_SYMBOL']} **{price:,}**" if price > 0 else " for free") + "!"
-    )
-
-
-@bot.command()
-async def tradedecline(ctx, trade_id: int):
-    """Decline a trade offer"""
-    async with aiosqlite.connect("bot_database.db") as db:
-        cursor = await db.execute(
-            "SELECT * FROM trades WHERE id = ? AND (receiver_id = ? OR sender_id = ?) AND guild_id = ? AND status = 'pending'",
-            (trade_id, ctx.author.id, ctx.author.id, ctx.guild.id)
-        )
-        trade_data = await cursor.fetchone()
-
-    if not trade_data:
-        return await ctx.send("❌ Trade not found!")
-
-    async with aiosqlite.connect("bot_database.db") as db:
-        await db.execute(
-            "UPDATE trades SET status = 'declined', resolved_at = ? WHERE id = ?",
-            (datetime.datetime.utcnow().isoformat(), trade_id)
-        )
-        await db.commit()
-
-    await ctx.send(f"✅ Trade #{trade_id} has been declined.")
-
-
+    
 # ══════════════════════════════════════════════════════════════════════════════
 # TICKET COMMANDS (UPDATED - Button Panel + Legacy)
 # ══════════════════════════════════════════════════════════════════════════════
