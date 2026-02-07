@@ -3001,7 +3001,7 @@ async def join(ctx):
     vc = ctx.voice_client
     if not vc:
         vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
-        vc.autoplay = wavelink.AutoPlayMode.disabled
+        if WAVELINK_AVAILABLE:             vc.autoplay = wavelink.AutoPlayMode.disabled
         await ctx.send(f"✅ Joined **{ctx.author.voice.channel.name}**")
     elif vc.channel != ctx.author.voice.channel:
         await vc.move_to(ctx.author.voice.channel)
@@ -3036,7 +3036,7 @@ async def play(ctx, *, query: str):
     vc = ctx.voice_client
     if not vc:
         vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
-        vc.autoplay = wavelink.AutoPlayMode.disabled
+        if WAVELINK_AVAILABLE:             vc.autoplay = wavelink.AutoPlayMode.disabled
 
     try:
         tracks = await wavelink.Playable.search(query) if WAVELINK_AVAILABLE else None
@@ -3047,7 +3047,7 @@ async def play(ctx, *, query: str):
         if guild_id not in music_queues:
             music_queues[guild_id] = []
 
-        if isinstance(tracks, wavelink.Playlist):
+        if WAVELINK_AVAILABLE and isinstance(tracks, wavelink.Playlist):
             for track in tracks.tracks:
                 music_queues[guild_id].append(track)
             await ctx.send(f"✅ Added **{len(tracks.tracks)}** tracks from playlist **{tracks.name}**")
@@ -3305,7 +3305,7 @@ async def twentyfourseven(ctx):
         vc = ctx.voice_client
         if not vc and ctx.author.voice:
             vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
-            vc.autoplay = wavelink.AutoPlayMode.disabled
+            if WAVELINK_AVAILABLE:             vc.autoplay = wavelink.AutoPlayMode.disabled
             await ctx.send(f"✅ Joined **{ctx.author.voice.channel.name}** in 24/7 mode")
 
 # ══════════════════════════════════════════════════════════════════════════════
