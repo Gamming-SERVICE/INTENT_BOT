@@ -3308,4 +3308,737 @@ async def twentyfourseven(ctx):
             vc.autoplay = wavelink.AutoPlayMode.disabled
             await ctx.send(f"✅ Joined **{ctx.author.voice.channel.name}** in 24/7 mode")
 
+# ══════════════════════════════════════════════════════════════════════════════
+# AI INTEGRATION - NEW
+# ══════════════════════════════════════════════════════════════════════════════
 
+async def get_ai_key(guild_id, provider):
+    """Get API key from DB first, then fall back to CONFIG"""
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT token FROM ai_tokens WHERE guild_id = ? AND provider = ?",
+            (guild_id, provider)
+        )
+        row = await cursor.fetchone()
+        if row and row[0]:
+            return row[0]
+    return CONFIG["AI_KEYS"].get(provider, "")
+
+
+async def ai_request_gemini(key, prompt):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload) as resp:
+            if resp.status != 200:
+                return f"❌ Gemini API error: {resp.status}"
+            data = await resp.json()
+            try:
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+            except (KeyError, IndexError):
+                return "❌ No response from Gemini."
+
+
+async def ai_request_openai(key, prompt, model="gpt-3.5-turbo"):
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 1500}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                return f"❌ OpenAI API error: {resp.status}"
+            data = await resp.json()
+            try:
+                return data["choices"][0]["message"]["content"]
+            except (KeyError, IndexError):
+                return "❌ No response from OpenAI."
+
+
+async def ai_request_groq(key, prompt):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {"model": "llama3-8b-8192", "messages": [{"role": "user", "content": prompt}], "max_tokens": 1500}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                return f"❌ Groq API error: {resp.status}"
+            data = await resp.json()
+            try:
+                return data["choices"][0]["message"]["content"]
+            except (KeyError, IndexError):
+                return "❌ No response from Groq."
+
+
+async def ai_request_claude_api(key, prompt):
+    url = "https://api.anthropic.com/v1/messages"
+    headers = {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "claude-3-haiku-20240307",
+        "max_tokens": 1500,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                return f"❌ Claude API error: {resp.status}"
+            data = await resp.json()
+            try:
+                return data["content"][0]["text"]
+            except (KeyError, IndexError):
+                return "❌ No response from Claude."
+
+
+async def ai_request_mistral(key, prompt):
+    url = "https://api.mistral.ai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {"model": "mistral-small-latest", "messages": [{"role": "user", "content": prompt}], "max_tokens": 1500}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                return f"❌ Mistral API error: {resp.status}"
+            data = await resp.json()
+            try:
+                return data["choices"][0]["message"]["content"]
+            except (KeyError, IndexError):
+                return "❌ No response from Mistral."
+
+
+async def ai_request_cohere(key, prompt):
+    url = "https://api.cohere.ai/v1/chat"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {"message": prompt, "model": "command-r"}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                return f"❌ Cohere API error: {resp.status}"
+            data = await resp.json()
+            try:
+                return data["text"]
+            except (KeyError, IndexError):
+                return "❌ No response from Cohere."
+
+
+async def ai_request_perplexity(key, prompt):
+    url = "https://api.perplexity.ai/chat/completions"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload = {
+        "model": "llama-3.1-sonar-small-128k-online",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 1500
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                return f"❌ Perplexity API error: {resp.status}"
+            data = await resp.json()
+            try:
+                return data["choices"][0]["message"]["content"]
+            except (KeyError, IndexError):
+                return "❌ No response from Perplexity."
+
+
+AI_HANDLERS = {
+    "gemini": ai_request_gemini,
+    "openai": ai_request_openai,
+    "groq": ai_request_groq,
+    "claude": ai_request_claude_api,
+    "mistral": ai_request_mistral,
+    "cohere": ai_request_cohere,
+    "perplexity": ai_request_perplexity,
+}
+
+AI_COLORS = {
+    "gemini": discord.Color.blue(),
+    "openai": discord.Color.green(),
+    "groq": discord.Color.orange(),
+    "claude": discord.Color.from_rgb(204, 120, 50),
+    "mistral": discord.Color.from_rgb(255, 120, 0),
+    "cohere": discord.Color.purple(),
+    "perplexity": discord.Color.teal(),
+}
+
+
+async def handle_ai_command(ctx, provider: str, prompt: str):
+    key = await get_ai_key(ctx.guild.id, provider)
+    if not key:
+        return await ctx.send(
+            f"❌ No API key set for **{provider}**. "
+            f"Admin can set it with `!ai set {provider} <key>`"
+        )
+
+    async with ctx.typing():
+        handler = AI_HANDLERS.get(provider)
+        if not handler:
+            return await ctx.send(f"❌ Unknown provider: {provider}")
+
+        try:
+            response = await handler(key, prompt)
+        except Exception as e:
+            return await ctx.send(f"❌ Error contacting {provider}: {e}")
+
+    # Split long responses
+    if len(response) > 4000:
+        response = response[:4000] + "..."
+
+    embed = create_embed(
+        title=f"🤖 {provider.title()} Response",
+        description=response[:4096],
+        color=AI_COLORS.get(provider, discord.Color.blurple()),
+        footer=f"Asked by {ctx.author.name} | Powered by {provider.title()}"
+    )
+    await ctx.send(embed=embed)
+
+
+@bot.command()
+async def gemini(ctx, *, prompt: str):
+    await handle_ai_command(ctx, "gemini", prompt)
+
+@bot.command()
+async def gpt(ctx, *, prompt: str):
+    await handle_ai_command(ctx, "openai", prompt)
+
+@bot.command()
+async def groq(ctx, *, prompt: str):
+    await handle_ai_command(ctx, "groq", prompt)
+
+@bot.command(name="askClaude")
+async def claude_cmd(ctx, *, prompt: str):
+    await handle_ai_command(ctx, "claude", prompt)
+
+@bot.command()
+async def mistral(ctx, *, prompt: str):
+    await handle_ai_command(ctx, "mistral", prompt)
+
+@bot.command()
+async def cohere(ctx, *, prompt: str):
+    await handle_ai_command(ctx, "cohere", prompt)
+
+@bot.command()
+async def perplexity(ctx, *, prompt: str):
+    await handle_ai_command(ctx, "perplexity", prompt)
+
+
+@bot.group(invoke_without_command=True)
+async def ai(ctx):
+    """AI management commands"""
+    await ctx.send("Usage: `!ai set <provider> <key>` | `!ai providers` | `!ai remove <provider>`")
+
+@ai.command(name="set")
+@commands.has_permissions(administrator=True)
+async def ai_set(ctx, provider: str, key: str):
+    """Set an AI API key"""
+    provider = provider.lower()
+    if provider not in AI_HANDLERS:
+        return await ctx.send(f"❌ Unknown provider. Available: {', '.join(AI_HANDLERS.keys())}")
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            """INSERT INTO ai_tokens (guild_id, provider, token, added_by)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(guild_id, provider) DO UPDATE SET token = ?, added_by = ?""",
+            (ctx.guild.id, provider, key, ctx.author.id, key, ctx.author.id)
+        )
+        await db.commit()
+
+    # Delete the message containing the key for security
+    try:
+        await ctx.message.delete()
+    except:
+        pass
+
+    await ctx.send(f"✅ API key for **{provider}** has been set! (Message deleted for security)")
+
+@ai.command(name="providers")
+async def ai_providers(ctx):
+    """List all AI providers and their status"""
+    description = ""
+    for provider in AI_HANDLERS:
+        key = await get_ai_key(ctx.guild.id, provider)
+        status = "✅ Configured" if key else "❌ Not set"
+        description += f"**{provider.title()}** — {status}\n"
+
+    description += f"\nUse `!ai set <provider> <key>` to configure"
+
+    embed = create_embed(
+        title="🤖 AI Providers",
+        description=description,
+        color=discord.Color.blurple()
+    )
+    await ctx.send(embed=embed)
+
+@ai.command(name="remove")
+@commands.has_permissions(administrator=True)
+async def ai_remove(ctx, provider: str):
+    """Remove an AI API key"""
+    provider = provider.lower()
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            "DELETE FROM ai_tokens WHERE guild_id = ? AND provider = ?",
+            (ctx.guild.id, provider)
+        )
+        await db.commit()
+    await ctx.send(f"✅ Removed API key for **{provider}**")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WAIFU SYSTEM - NEW
+# ══════════════════════════════════════════════════════════════════════════════
+
+WAIFU_TYPES = [
+    "waifu", "neko", "shinobu", "megumin", "bully", "cuddle", "cry",
+    "hug", "awoo", "kiss", "lick", "pat", "smug", "bonk", "yeet",
+    "blush", "smile", "wave", "highfive", "handhold", "nom", "bite",
+    "glomp", "slap", "kill", "kick", "happy", "wink", "poke", "dance", "cringe"
+]
+
+WAIFU_SFW_CATEGORIES = [
+    "waifu", "neko", "shinobu", "megumin", "bully", "cuddle", "cry",
+    "hug", "awoo", "kiss", "lick", "pat", "smug", "bonk", "yeet",
+    "blush", "smile", "wave", "highfive", "handhold", "nom", "bite",
+    "glomp", "slap", "kill", "kick", "happy", "wink", "poke", "dance", "cringe"
+]
+
+
+async def fetch_waifu(waifu_type: str = "waifu"):
+    """Fetch a waifu image from waifu.pics API"""
+    if waifu_type not in WAIFU_SFW_CATEGORIES:
+        waifu_type = "waifu"
+
+    url = f"https://api.waifu.pics/sfw/{waifu_type}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get("url")
+    except:
+        pass
+    return None
+
+
+@bot.command()
+async def waifu(ctx, waifu_type: str = "waifu"):
+    """Get a random waifu image"""
+    waifu_type = waifu_type.lower()
+    if waifu_type not in WAIFU_TYPES:
+        types_str = ", ".join(WAIFU_TYPES[:15]) + "..."
+        return await ctx.send(f"❌ Invalid type! Available: {types_str}\nUse `!help` and select Waifu for full list.")
+
+    url = await fetch_waifu(waifu_type)
+    if not url:
+        return await ctx.send("❌ Failed to fetch waifu image. Try again!")
+
+    embed = create_embed(
+        title=f"💕 {waifu_type.title()}",
+        color=discord.Color.pink(),
+        image=url,
+        footer=f"Requested by {ctx.author.name} | Type: {waifu_type}"
+    )
+    await ctx.send(embed=embed)
+
+
+@bot.command()
+async def waifucollect(ctx, waifu_type: str = "waifu"):
+    """Collect a waifu to your collection"""
+    waifu_type = waifu_type.lower()
+    if waifu_type not in WAIFU_TYPES:
+        return await ctx.send("❌ Invalid type!")
+
+    url = await fetch_waifu(waifu_type)
+    if not url:
+        return await ctx.send("❌ Failed to fetch waifu. Try again!")
+
+    # Determine rarity
+    rarity_roll = random.random()
+    if rarity_roll < 0.01:
+        rarity = "legendary"
+    elif rarity_roll < 0.05:
+        rarity = "epic"
+    elif rarity_roll < 0.15:
+        rarity = "rare"
+    elif rarity_roll < 0.40:
+        rarity = "uncommon"
+    else:
+        rarity = "common"
+
+    waifu_name = f"{rarity.title()} {waifu_type.title()} #{random.randint(1000, 9999)}"
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            """INSERT INTO waifu_collection (user_id, guild_id, waifu_name, waifu_url, waifu_type, rarity)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (ctx.author.id, ctx.guild.id, waifu_name, url, waifu_type, rarity)
+        )
+        await db.commit()
+
+    rarity_icons = {"common": "⬜", "uncommon": "🟩", "rare": "🟦", "epic": "🟪", "legendary": "🟨"}
+
+    embed = create_embed(
+        title=f"💕 Waifu Collected!",
+        description=(
+            f"**{waifu_name}**\n"
+            f"Rarity: {rarity_icons.get(rarity, '⬜')} **{rarity.title()}**\n"
+            f"Type: {waifu_type.title()}"
+        ),
+        color=get_rarity_color(rarity),
+        image=url,
+        footer=f"Collected by {ctx.author.name}"
+    )
+    await ctx.send(embed=embed)
+
+
+@bot.command()
+async def waifubox(ctx, member: discord.Member = None):
+    """View your waifu collection"""
+    member = member or ctx.author
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            """SELECT waifu_name, waifu_type, rarity, collected_at
+               FROM waifu_collection
+               WHERE user_id = ? AND guild_id = ?
+               ORDER BY
+                   CASE rarity
+                       WHEN 'legendary' THEN 1
+                       WHEN 'epic' THEN 2
+                       WHEN 'rare' THEN 3
+                       WHEN 'uncommon' THEN 4
+                       ELSE 5
+                   END,
+                   collected_at DESC
+               LIMIT 20""",
+            (member.id, ctx.guild.id)
+        )
+        waifus = await cursor.fetchall()
+
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM waifu_collection WHERE user_id = ? AND guild_id = ?",
+            (member.id, ctx.guild.id)
+        )
+        total = (await cursor.fetchone())[0]
+
+    if not waifus:
+        return await ctx.send(f"❌ {member.name} has no waifus! Use `!waifucollect` to collect some.")
+
+    rarity_icons = {"common": "⬜", "uncommon": "🟩", "rare": "🟦", "epic": "🟪", "legendary": "🟨"}
+
+    description = ""
+    for name, wtype, rarity, collected in waifus:
+        ri = rarity_icons.get(rarity, "⬜")
+        description += f"{ri} **{name}** ({wtype})\n"
+
+    if total > 20:
+        description += f"\n*...and {total - 20} more*"
+
+    description += f"\n\n**Total:** {total} waifus"
+
+    embed = create_embed(
+        title=f"💕 {member.name}'s Waifu Collection",
+        description=description,
+        color=discord.Color.pink(),
+        thumbnail=member.display_avatar.url
+    )
+    await ctx.send(embed=embed)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADMIN / CONFIGURATION COMMANDS - NEW
+# ══════════════════════════════════════════════════════════════════════════════
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setwelcome(ctx, channel: discord.TextChannel):
+    CONFIG["WELCOME_CHANNEL"] = channel.id
+    await ctx.send(f"✅ Welcome channel set to {channel.mention}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setleave(ctx, channel: discord.TextChannel):
+    CONFIG["LEAVE_CHANNEL"] = channel.id
+    await ctx.send(f"✅ Leave channel set to {channel.mention}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setlog(ctx, channel: discord.TextChannel):
+    CONFIG["LOG_CHANNEL"] = channel.id
+    await ctx.send(f"✅ Log channel set to {channel.mention}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setautorole(ctx, role_input: discord.Role):
+    CONFIG["AUTO_ROLE"] = role_input.id
+    await ctx.send(f"✅ Auto role set to {role_input.mention}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setmuterole(ctx, role_input: discord.Role):
+    CONFIG["MUTE_ROLE"] = role_input.id
+    await ctx.send(f"✅ Mute role set to {role_input.mention}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setticketcategory(ctx, category: discord.CategoryChannel):
+    CONFIG["TICKET_CATEGORY"] = category.id
+    await ctx.send(f"✅ Ticket category set to **{category.name}**")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setlevelchannel(ctx, channel: discord.TextChannel):
+    CONFIG["LEVEL_UP_CHANNEL"] = channel.id
+    await ctx.send(f"✅ Level up channel set to {channel.mention}")
+
+
+# Color Role Admin Commands
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def addcolorrole(ctx, role_input: discord.Role, label: str, emoji: str = "🎨", style: int = 1):
+    """Add a color role to the panel. Style: 1=Blue, 2=Grey, 3=Green, 4=Red"""
+    if style not in (1, 2, 3, 4):
+        return await ctx.send("❌ Style must be 1 (Blue), 2 (Grey), 3 (Green), or 4 (Red)")
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            """INSERT INTO color_roles (guild_id, role_id, label, emoji, style)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(guild_id, role_id) DO UPDATE SET label = ?, emoji = ?, style = ?""",
+            (ctx.guild.id, role_input.id, label, emoji, style, label, emoji, style)
+        )
+        await db.commit()
+
+    await ctx.send(f"✅ Added color role {role_input.mention} with label **{label}** {emoji}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def removecolorrole(ctx, role_input: discord.Role):
+    """Remove a color role from the panel"""
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            "DELETE FROM color_roles WHERE guild_id = ? AND role_id = ?",
+            (ctx.guild.id, role_input.id)
+        )
+        await db.commit()
+    await ctx.send(f"✅ Removed color role {role_input.mention}")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def colorpanel(ctx, channel: discord.TextChannel = None):
+    """Post the color role selection panel"""
+    channel = channel or ctx.channel
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        cursor = await db.execute(
+            "SELECT role_id, label, emoji, style FROM color_roles WHERE guild_id = ?",
+            (ctx.guild.id,)
+        )
+        roles_data = await cursor.fetchall()
+
+    if not roles_data:
+        return await ctx.send("❌ No color roles configured! Use `!addcolorrole` first.")
+
+    if len(roles_data) > 25:
+        return await ctx.send("❌ Maximum 25 color roles per panel!")
+
+    embed = create_embed(
+        title="🎨 Color Roles",
+        description="Click a button below to get a color role!\nClick again to remove it.\nSelecting a new color removes the old one.",
+        color=discord.Color.from_rgb(255, 255, 255)
+    )
+
+    view = ColorRolePanelView(roles_data)
+    await channel.send(embed=embed, view=view)
+    await ctx.send(f"✅ Color panel posted in {channel.mention}", delete_after=5)
+
+
+# Custom Commands Admin
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def addcmd(ctx, name: str, *, response: str):
+    """Add a custom command"""
+    name = name.lower()
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO custom_commands (name, guild_id, response, created_by) VALUES (?, ?, ?, ?)",
+            (name, ctx.guild.id, response, ctx.author.id)
+        )
+        await db.commit()
+    custom_commands[name] = response
+    await ctx.send(f"✅ Custom command `{CONFIG['PREFIX']}{name}` created!")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def delcmd(ctx, name: str):
+    """Delete a custom command"""
+    name = name.lower()
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute("DELETE FROM custom_commands WHERE name = ?", (name,))
+        await db.commit()
+    custom_commands.pop(name, None)
+    await ctx.send(f"✅ Custom command `{name}` deleted!")
+
+
+# Reaction Roles Admin
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def reactionrole(ctx, message_id: int, emoji: str, role_input: discord.Role):
+    """Add a reaction role to a message"""
+    try:
+        channel_msg = await ctx.channel.fetch_message(message_id)
+        await channel_msg.add_reaction(emoji)
+    except:
+        return await ctx.send("❌ Could not find message or add reaction!")
+
+    key = f"{message_id}-{emoji}"
+    reaction_roles[key] = role_input.id
+
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO reaction_roles (message_id, emoji, role_id, guild_id) VALUES (?, ?, ?, ?)",
+            (message_id, emoji, role_input.id, ctx.guild.id)
+        )
+        await db.commit()
+
+    await ctx.send(f"✅ Reaction role set: {emoji} → {role_input.mention}")
+
+
+# Toggle Features
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def toggle(ctx, feature: str):
+    """Toggle bot features on/off"""
+    feature = feature.upper()
+    toggleable = {
+        "WELCOME": "WELCOME_ENABLED",
+        "LEVELING": "LEVELING_ENABLED",
+        "ECONOMY": "ECONOMY_ENABLED",
+        "AUTOMOD": "AUTOMOD_ENABLED",
+        "LOGGING": "LOGGING_ENABLED",
+        "MUSIC": "MUSIC_ENABLED",
+        "ANTISPAM": "ANTI_SPAM_ENABLED",
+        "ANTILINK": "ANTI_LINK_ENABLED",
+    }
+
+    if feature not in toggleable:
+        available = ", ".join(toggleable.keys())
+        return await ctx.send(f"❌ Unknown feature! Available: {available}")
+
+    config_key = toggleable[feature]
+    CONFIG[config_key] = not CONFIG[config_key]
+    status = "enabled" if CONFIG[config_key] else "disabled"
+    await ctx.send(f"✅ **{feature}** has been **{status}**!")
+
+
+# Banned Words Admin
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def addword(ctx, *, word: str):
+    """Add a banned word"""
+    CONFIG["BANNED_WORDS"].append(word.lower())
+    await ctx.send(f"✅ Added `{word}` to banned words list")
+    try:
+        await ctx.message.delete()
+    except:
+        pass
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def removeword(ctx, *, word: str):
+    """Remove a banned word"""
+    word_lower = word.lower()
+    if word_lower in [w.lower() for w in CONFIG["BANNED_WORDS"]]:
+        CONFIG["BANNED_WORDS"] = [w for w in CONFIG["BANNED_WORDS"] if w.lower() != word_lower]
+        await ctx.send(f"✅ Removed `{word}` from banned words list")
+    else:
+        await ctx.send("❌ Word not found in banned list")
+
+
+# Mod/Admin Role Config
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def addmodrole(ctx, role_input: discord.Role):
+    """Add a moderator role"""
+    if role_input.id not in CONFIG["MOD_ROLES"]:
+        CONFIG["MOD_ROLES"].append(role_input.id)
+    await ctx.send(f"✅ {role_input.mention} added as moderator role")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def addadminrole(ctx, role_input: discord.Role):
+    """Add an admin role"""
+    if role_input.id not in CONFIG["ADMIN_ROLES"]:
+        CONFIG["ADMIN_ROLES"].append(role_input.id)
+    await ctx.send(f"✅ {role_input.mention} added as admin role")
+
+
+# Bot Info
+@bot.command()
+async def botinfo(ctx):
+    """Show bot information"""
+    embed = create_embed(
+        title=f"🤖 {bot.user.name}",
+        color=discord.Color.blurple(),
+        thumbnail=bot.user.display_avatar.url
+    )
+    embed.add_field(name="Version", value="2.0", inline=True)
+    embed.add_field(name="Servers", value=len(bot.guilds), inline=True)
+    embed.add_field(name="Users", value=sum(g.member_count for g in bot.guilds), inline=True)
+    embed.add_field(name="Ping", value=f"{round(bot.latency * 1000)}ms", inline=True)
+    embed.add_field(name="Commands", value="100+", inline=True)
+    embed.add_field(
+        name="Features",
+        value="Moderation, Economy, Market, Trading, Music, AI, Waifu, Tickets, Giveaways, Leveling & more!",
+        inline=False
+    )
+    await ctx.send(embed=embed)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ERROR HANDLER
+# ══════════════════════════════════════════════════════════════════════════════
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return  # Silently ignore unknown commands
+
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ You don't have permission to use this command!")
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(f"❌ Missing argument: `{error.param.name}`. Use `!help` for usage info.")
+    elif isinstance(error, commands.BadArgument):
+        await ctx.send("❌ Invalid argument provided. Please check your input.")
+    elif isinstance(error, commands.CommandOnCooldown):
+        await ctx.send(f"⏳ Command on cooldown. Try again in **{error.retry_after:.1f}s**")
+    elif isinstance(error, commands.MemberNotFound):
+        await ctx.send("❌ Member not found!")
+    elif isinstance(error, commands.RoleNotFound):
+        await ctx.send("❌ Role not found!")
+    elif isinstance(error, commands.ChannelNotFound):
+        await ctx.send("❌ Channel not found!")
+    elif isinstance(error, commands.BotMissingPermissions):
+        perms = ", ".join(error.missing_permissions)
+        await ctx.send(f"❌ I'm missing permissions: `{perms}`")
+    elif isinstance(error, commands.NotOwner):
+        await ctx.send("❌ This command is owner-only!")
+    else:
+        # Log unexpected errors
+        print(f"Unhandled error in {ctx.command}: {error}")
+        traceback.print_exception(type(error), error, error.__traceback__)
+        await ctx.send("❌ An unexpected error occurred. Please try again later.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RUN THE BOT
+# ══════════════════════════════════════════════════════════════════════════════
+
+if __name__ == "__main__":
+    token = CONFIG["TOKEN"]
+    if token == "DISCORD_TOKEN" or not token:
+        print("❌ ERROR: Please set your Discord bot token in CONFIG['TOKEN']!")
+        print("   Edit the bot.py file and replace 'DISCORD_TOKEN' with your actual token.")
+    else:
+        print("🚀 Starting bot...")
+        bot.run(token)
