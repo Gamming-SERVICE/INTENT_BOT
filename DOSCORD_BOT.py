@@ -3039,7 +3039,7 @@ async def play(ctx, *, query: str):
         vc.autoplay = wavelink.AutoPlayMode.disabled
 
     try:
-        tracks = await wavelink.Playable.search(query)
+        tracks = await wavelink.Playable.search(query) if WAVELINK_AVAILABLE else None
         if not tracks:
             return await ctx.send("❌ No results found!")
 
