@@ -3077,35 +3077,35 @@ async def play(ctx, *, query: str):
         await ctx.send(f"❌ Error: {e}")
 
 
-@bot.event
-async def on_wavelink_track_end(payload: wavelink.TrackEndEventPayload):
-    player = payload.player
-    if not player or not player.guild:
-        return
+if WAVELINK_AVAILABLE:
+    @bot.event
+    async def on_wavelink_track_end(payload):
+        player = payload.player
+        if not player or not player.guild:
+            return
 
-    guild_id = player.guild.id
-    loop_mode = music_loop.get(guild_id, "off")
+        guild_id = player.guild.id
+        loop_mode = music_loop.get(guild_id, "off")
 
-    # Handle loop modes
-    if loop_mode == "track" and payload.track:
-        await player.play(payload.track)
-        return
+        if loop_mode == "track" and payload.track:
+            await player.play(payload.track)
+            return
 
-    if loop_mode == "queue" and payload.track:
-        if guild_id not in music_queues:
-            music_queues[guild_id] = []
-        music_queues[guild_id].append(payload.track)
+        if loop_mode == "queue" and payload.track:
+            if guild_id not in music_queues:
+                music_queues[guild_id] = []
+            music_queues[guild_id].append(payload.track)
 
-    if guild_id in music_queues and music_queues[guild_id]:
-        next_track = music_queues[guild_id].pop(0)
-        await player.play(next_track)
-    elif guild_id not in music_247:
-        await asyncio.sleep(300)
-        if not player.playing and guild_id not in music_247:
-            try:
-                await player.disconnect()
-            except:
-                pass
+        if guild_id in music_queues and music_queues[guild_id]:
+            next_track = music_queues[guild_id].pop(0)
+            await player.play(next_track)
+        elif guild_id not in music_247:
+            await asyncio.sleep(300)
+            if not player.playing and guild_id not in music_247:
+                try:
+                    await player.disconnect()
+                except:
+                    pass
 
 
 @bot.command()
