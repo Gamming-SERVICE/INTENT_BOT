@@ -137,7 +137,7 @@ DATABASE_PATH = "bot_database.db"
 # DATABASE SETUP + MIGRATION (SAFE - NEVER DROPS DATA)
 # ══════════════════════════════════════════════════════════════════════════════
 
-async get_db_connection():
+def get_db_connection():
     """Get a database connection with proper error handling"""
     try:
         return aiosqlite.connect(DATABASE_PATH)
