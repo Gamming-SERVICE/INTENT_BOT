@@ -146,7 +146,7 @@ async def get_db_connection():
         raise
 
 async def init_database():
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         # Original tables (unchanged)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -380,7 +380,7 @@ async def init_database():
 
 async def seed_market_items():
     """Seed the market with items if empty. Safe to call multiple times."""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute("SELECT COUNT(*) FROM market_items")
         count = (await cursor.fetchone())[0]
 
@@ -553,7 +553,7 @@ def get_level_from_xp(xp):
     return level, xp
 
 async def get_user_data(user_id, guild_id):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM users WHERE user_id = ? AND guild_id = ?",
             (user_id, guild_id)
@@ -576,7 +576,7 @@ async def get_user_data(user_id, guild_id):
         return dict(zip(columns, row))
 
 async def update_user_data(user_id, guild_id, **kwargs):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         set_clause = ", ".join([f"{k} = ?" for k in kwargs.keys()])
         values = list(kwargs.values()) + [user_id, guild_id]
         await db.execute(
@@ -658,7 +658,7 @@ class TicketCloseConfirm(discord.ui.View):
         await interaction.response.send_message("🔒 Closing ticket in 5 seconds...")
         await asyncio.sleep(5)
 
-        async with await get_db_connection() as db:
+        async with get_db_connection() as db:
             await db.execute(
                 "UPDATE tickets SET status = 'closed', closed_at = ? WHERE channel_id = ?",
                 (datetime.datetime.utcnow().isoformat(), interaction.channel.id)
@@ -680,7 +680,7 @@ class TicketControlView(discord.ui.View):
 
     @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.red, emoji="🔒", custom_id="ticket:close")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        async with await get_db_connection() as db:
+        async with get_db_connection() as db:
             cursor = await db.execute(
                 "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
                 (interaction.channel.id,)
@@ -707,7 +707,7 @@ class TicketPanelView(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        async with await get_db_connection() as db:
+        async with get_db_connection() as db:
             cursor = await db.execute(
                 "SELECT channel_id FROM tickets WHERE user_id = ? AND guild_id = ? AND status = 'open'",
                 (user.id, guild.id)
@@ -752,7 +752,7 @@ class TicketPanelView(discord.ui.View):
             topic=f"Support ticket for {user} ({user.id})"
         )
 
-        async with await get_db_connection() as db:
+        async with get_db_connection() as db:
             await db.execute(
                 "INSERT INTO tickets (channel_id, user_id, guild_id) VALUES (?, ?, ?)",
                 (channel.id, user.id, guild.id)
@@ -803,7 +803,7 @@ class ColorRoleButton(discord.ui.Button):
         member = interaction.user
 
         # Remove other color roles from this panel first
-        async with await get_db_connection() as db:
+        async with get_db_connection() as db:
             cursor = await db.execute(
                 "SELECT role_id FROM color_roles WHERE guild_id = ?",
                 (interaction.guild.id,)
@@ -920,7 +920,7 @@ async def on_ready():
     bot.add_view(TicketControlView())
 
     # Load color role panels
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute("SELECT role_id, label, emoji, style FROM color_roles WHERE guild_id IS NOT NULL")
         rows = await cursor.fetchall()
         if rows:
@@ -1035,7 +1035,7 @@ async def on_message(message):
         cmd_name = message.content[len(CONFIG["PREFIX"]):].split()[0].lower()
         if cmd_name in custom_commands:
             await message.channel.send(custom_commands[cmd_name])
-            async with await get_db_connection() as db:
+            async with get_db_connection() as db:
                 await db.execute(
                     "UPDATE custom_commands SET uses = uses + 1 WHERE name = ?",
                     (cmd_name,)
@@ -1227,7 +1227,7 @@ async def on_raw_reaction_remove(payload):
 @tasks.loop(seconds=30)
 async def check_reminders():
     now = datetime.datetime.utcnow()
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM reminders WHERE remind_at <= ?",
             (now.isoformat(),)
@@ -1248,7 +1248,7 @@ async def check_reminders():
 @tasks.loop(seconds=30)
 async def check_giveaways():
     now = datetime.datetime.utcnow()
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM giveaways WHERE end_time <= ? AND ended = 0",
             (now.isoformat(),)
@@ -1320,7 +1320,7 @@ async def update_status():
 
 
 async def load_reaction_roles():
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute("SELECT message_id, emoji, role_id FROM reaction_roles")
         rows = await cursor.fetchall()
         for row in rows:
@@ -1329,7 +1329,7 @@ async def load_reaction_roles():
 
 
 async def load_custom_commands():
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute("SELECT name, response FROM custom_commands")
         rows = await cursor.fetchall()
         for row in rows:
@@ -1679,7 +1679,7 @@ async def unmute(ctx, member: discord.Member):
 @bot.command()
 @commands.has_permissions(moderate_members=True)
 async def warn(ctx, member: discord.Member, *, reason: str):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "INSERT INTO warnings (user_id, guild_id, moderator_id, reason) VALUES (?, ?, ?, ?)",
             (member.id, ctx.guild.id, ctx.author.id, reason)
@@ -1710,7 +1710,7 @@ async def warn(ctx, member: discord.Member, *, reason: str):
 @bot.command()
 async def warnings(ctx, member: discord.Member = None):
     member = member or ctx.author
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT reason, moderator_id, created_at FROM warnings WHERE user_id = ? AND guild_id = ? ORDER BY created_at DESC LIMIT 10",
             (member.id, ctx.guild.id)
@@ -1730,7 +1730,7 @@ async def warnings(ctx, member: discord.Member = None):
 @bot.command()
 @commands.has_permissions(moderate_members=True)
 async def clearwarns(ctx, member: discord.Member):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "DELETE FROM warnings WHERE user_id = ? AND guild_id = ?",
             (member.id, ctx.guild.id)
@@ -1902,7 +1902,7 @@ async def remind(ctx, duration: str, *, reminder: str):
     if not seconds:
         return await ctx.send("❌ Invalid duration. Use format: 1d, 2h, 30m, 60s")
     remind_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=seconds)
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "INSERT INTO reminders (user_id, channel_id, reminder, remind_at) VALUES (?, ?, ?, ?)",
             (ctx.author.id, ctx.channel.id, reminder, remind_at.isoformat())
@@ -2080,7 +2080,7 @@ async def rank(ctx, member: discord.Member = None):
         progress = 0
     bar = "█" * progress + "░" * (20 - progress)
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT COUNT(*) FROM users WHERE guild_id = ? AND xp > ?",
             (ctx.guild.id, data["xp"])
@@ -2101,7 +2101,7 @@ async def rank(ctx, member: discord.Member = None):
 
 @bot.command(aliases=["lb", "top"])
 async def leaderboard(ctx, page: int = 1):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT user_id, xp, level FROM users WHERE guild_id = ? ORDER BY xp DESC LIMIT 10 OFFSET ?",
             (ctx.guild.id, (page - 1) * 10)
@@ -2310,7 +2310,7 @@ async def gamble(ctx, amount: int):
 
 @bot.command()
 async def baltop(ctx, page: int = 1):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT user_id, balance + bank as total FROM users WHERE guild_id = ? ORDER BY total DESC LIMIT 10 OFFSET ?",
             (ctx.guild.id, (page - 1) * 10)
@@ -2336,7 +2336,7 @@ async def baltop(ctx, page: int = 1):
 
 @bot.command(aliases=["shop"])
 async def market(ctx, category: str = None, page: int = 1):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         if category:
             cursor = await db.execute(
                 "SELECT * FROM market_items WHERE LOWER(category) = ? ORDER BY current_price ASC",
@@ -2388,7 +2388,7 @@ async def market(ctx, category: str = None, page: int = 1):
 
 @bot.command()
 async def mcategories(ctx):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT DISTINCT category, COUNT(*) FROM market_items GROUP BY category ORDER BY category"
         )
@@ -2414,7 +2414,7 @@ async def mcategories(ctx):
 
 @bot.command()
 async def minfo(ctx, item_id: int):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute("SELECT * FROM market_items WHERE item_id = ?", (item_id,))
         item = await cursor.fetchone()
 
@@ -2445,7 +2445,7 @@ async def mbuy(ctx, item_id: int, quantity: int = 1):
     if quantity <= 0:
         return await ctx.send("❌ Quantity must be positive!")
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute("SELECT * FROM market_items WHERE item_id = ?", (item_id,))
         item = await cursor.fetchone()
         if not item:
@@ -2494,7 +2494,7 @@ async def msell(ctx, item_id: int, quantity: int = 1):
     if quantity <= 0:
         return await ctx.send("❌ Quantity must be positive!")
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT quantity FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
             (ctx.author.id, ctx.guild.id, item_id)
@@ -2547,7 +2547,7 @@ async def msell(ctx, item_id: int, quantity: int = 1):
 @bot.command()
 async def minv(ctx, member: discord.Member = None):
     member = member or ctx.author
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             """SELECT ui.quantity, mi.name, mi.emoji, mi.rarity, mi.item_id, mi.current_price
                FROM user_items ui
@@ -2593,7 +2593,7 @@ async def trade(ctx, member: discord.Member, item_id: int, quantity: int = 1, pr
     if price < 0:
         return await ctx.send("❌ Price can't be negative!")
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT quantity FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
             (ctx.author.id, ctx.guild.id, item_id)
@@ -2637,7 +2637,7 @@ async def trade(ctx, member: discord.Member, item_id: int, quantity: int = 1, pr
 @bot.command()
 async def trades(ctx):
     """View your pending trades"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             """SELECT t.id, t.sender_id, t.receiver_id, t.quantity, t.price, mi.name, mi.emoji
                FROM trades t
@@ -2670,7 +2670,7 @@ async def trades(ctx):
 @bot.command()
 async def tradeaccept(ctx, trade_id: int):
     """Accept a trade offer"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM trades WHERE id = ? AND receiver_id = ? AND guild_id = ? AND status = 'pending'",
             (trade_id, ctx.author.id, ctx.guild.id)
@@ -2686,7 +2686,7 @@ async def tradeaccept(ctx, trade_id: int):
     quantity = trade_data[5]
     price = trade_data[6]
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         # Verify sender still has items
         cursor = await db.execute(
             "SELECT quantity FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
@@ -2743,7 +2743,7 @@ async def tradeaccept(ctx, trade_id: int):
         await db.commit()
 
     # Get item name for message
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute("SELECT name, emoji FROM market_items WHERE item_id = ?", (item_id,))
         item = await cursor.fetchone()
 
@@ -2757,7 +2757,7 @@ async def tradeaccept(ctx, trade_id: int):
 @bot.command()
 async def tradedecline(ctx, trade_id: int):
     """Decline a trade offer"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM trades WHERE id = ? AND (receiver_id = ? OR sender_id = ?) AND guild_id = ? AND status = 'pending'",
             (trade_id, ctx.author.id, ctx.author.id, ctx.guild.id)
@@ -2767,7 +2767,7 @@ async def tradedecline(ctx, trade_id: int):
     if not trade_data:
         return await ctx.send("❌ Trade not found!")
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "UPDATE trades SET status = 'declined', resolved_at = ? WHERE id = ?",
             (datetime.datetime.utcnow().isoformat(), trade_id)
@@ -2809,7 +2809,7 @@ async def ticketpanel(ctx, channel: discord.TextChannel = None):
 @bot.command()
 async def ticket(ctx):
     """Create a ticket via command (legacy)"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM tickets WHERE user_id = ? AND guild_id = ? AND status = 'open'",
             (ctx.author.id, ctx.guild.id)
@@ -2848,7 +2848,7 @@ async def ticket(ctx):
         topic=f"Support ticket for {ctx.author} ({ctx.author.id})"
     )
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "INSERT INTO tickets (channel_id, user_id, guild_id) VALUES (?, ?, ?)",
             (channel.id, ctx.author.id, ctx.guild.id)
@@ -2873,7 +2873,7 @@ async def ticket(ctx):
 @bot.command()
 async def close(ctx):
     """Close a ticket"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
             (ctx.channel.id,)
@@ -2886,7 +2886,7 @@ async def close(ctx):
     await ctx.send("🔒 Closing ticket in 5 seconds...")
     await asyncio.sleep(5)
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "UPDATE tickets SET status = 'closed', closed_at = ? WHERE channel_id = ?",
             (datetime.datetime.utcnow().isoformat(), ctx.channel.id)
@@ -2900,7 +2900,7 @@ async def close(ctx):
 @commands.has_permissions(manage_channels=True)
 async def add(ctx, member: discord.Member):
     """Add a user to a ticket"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
             (ctx.channel.id,)
@@ -2918,7 +2918,7 @@ async def add(ctx, member: discord.Member):
 @commands.has_permissions(manage_channels=True)
 async def remove(ctx, member: discord.Member):
     """Remove a user from a ticket"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
             (ctx.channel.id,)
@@ -2960,7 +2960,7 @@ async def gstart(ctx, duration: str, winners: int, *, prize: str):
     message = await ctx.send(embed=embed)
     await message.add_reaction("🎉")
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "INSERT INTO giveaways (message_id, channel_id, guild_id, prize, winners, host_id, end_time) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (message.id, ctx.channel.id, ctx.guild.id, prize, winners, ctx.author.id, end_time.isoformat())
@@ -2971,7 +2971,7 @@ async def gstart(ctx, duration: str, winners: int, *, prize: str):
 @bot.command()
 @commands.has_permissions(manage_guild=True)
 async def gend(ctx, message_id: int):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM giveaways WHERE message_id = ? AND ended = 0",
             (message_id,)
@@ -2999,7 +2999,7 @@ async def gend(ctx, message_id: int):
         else:
             await channel.send("😢 No one entered the giveaway.")
 
-        async with await get_db_connection() as db:
+        async with get_db_connection() as db:
             await db.execute("UPDATE giveaways SET ended = 1 WHERE message_id = ?", (message_id,))
             await db.commit()
 
@@ -3011,7 +3011,7 @@ async def gend(ctx, message_id: int):
 @bot.command()
 @commands.has_permissions(manage_guild=True)
 async def greroll(ctx, message_id: int):
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT * FROM giveaways WHERE message_id = ?",
             (message_id,)
@@ -3337,7 +3337,7 @@ async def twentyfourseven(ctx):
 
 async def get_ai_key(guild_id, provider):
     """Get API key from DB first, then fall back to CONFIG"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT token FROM ai_tokens WHERE guild_id = ? AND provider = ?",
             (guild_id, provider)
@@ -3558,7 +3558,7 @@ async def ai_set(ctx, provider: str, key: str):
     if provider not in AI_HANDLERS:
         return await ctx.send(f"❌ Unknown provider. Available: {', '.join(AI_HANDLERS.keys())}")
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             """INSERT INTO ai_tokens (guild_id, provider, token, added_by)
                VALUES (?, ?, ?, ?)
@@ -3598,7 +3598,7 @@ async def ai_providers(ctx):
 async def ai_remove(ctx, provider: str):
     """Remove an AI API key"""
     provider = provider.lower()
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "DELETE FROM ai_tokens WHERE guild_id = ? AND provider = ?",
             (ctx.guild.id, provider)
@@ -3690,7 +3690,7 @@ async def waifucollect(ctx, waifu_type: str = "waifu"):
 
     waifu_name = f"{rarity.title()} {waifu_type.title()} #{random.randint(1000, 9999)}"
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             """INSERT INTO waifu_collection (user_id, guild_id, waifu_name, waifu_url, waifu_type, rarity)
                VALUES (?, ?, ?, ?, ?, ?)""",
@@ -3719,7 +3719,7 @@ async def waifubox(ctx, member: discord.Member = None):
     """View your waifu collection"""
     member = member or ctx.author
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             """SELECT waifu_name, waifu_type, rarity, collected_at
                FROM waifu_collection
@@ -3823,7 +3823,7 @@ async def addcolorrole(ctx, role_input: discord.Role, label: str, emoji: str = "
     if style not in (1, 2, 3, 4):
         return await ctx.send("❌ Style must be 1 (Blue), 2 (Grey), 3 (Green), or 4 (Red)")
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             """INSERT INTO color_roles (guild_id, role_id, label, emoji, style)
                VALUES (?, ?, ?, ?, ?)
@@ -3838,7 +3838,7 @@ async def addcolorrole(ctx, role_input: discord.Role, label: str, emoji: str = "
 @commands.has_permissions(administrator=True)
 async def removecolorrole(ctx, role_input: discord.Role):
     """Remove a color role from the panel"""
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "DELETE FROM color_roles WHERE guild_id = ? AND role_id = ?",
             (ctx.guild.id, role_input.id)
@@ -3852,7 +3852,7 @@ async def colorpanel(ctx, channel: discord.TextChannel = None):
     """Post the color role selection panel"""
     channel = channel or ctx.channel
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         cursor = await db.execute(
             "SELECT role_id, label, emoji, style FROM color_roles WHERE guild_id = ?",
             (ctx.guild.id,)
@@ -3882,7 +3882,7 @@ async def colorpanel(ctx, channel: discord.TextChannel = None):
 async def addcmd(ctx, name: str, *, response: str):
     """Add a custom command"""
     name = name.lower()
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "INSERT OR REPLACE INTO custom_commands (name, guild_id, response, created_by) VALUES (?, ?, ?, ?)",
             (name, ctx.guild.id, response, ctx.author.id)
@@ -3896,7 +3896,7 @@ async def addcmd(ctx, name: str, *, response: str):
 async def delcmd(ctx, name: str):
     """Delete a custom command"""
     name = name.lower()
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute("DELETE FROM custom_commands WHERE name = ?", (name,))
         await db.commit()
     custom_commands.pop(name, None)
@@ -3917,7 +3917,7 @@ async def reactionrole(ctx, message_id: int, emoji: str, role_input: discord.Rol
     key = f"{message_id}-{emoji}"
     reaction_roles[key] = role_input.id
 
-    async with await get_db_connection() as db:
+    async with get_db_connection() as db:
         await db.execute(
             "INSERT OR REPLACE INTO reaction_roles (message_id, emoji, role_id, guild_id) VALUES (?, ?, ?, ?)",
             (message_id, emoji, role_input.id, ctx.guild.id)
