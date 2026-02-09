@@ -2439,21 +2439,33 @@ async def msell(ctx, item_id: int, quantity: int = 1):
         return await ctx.send("❌ Quantity must be positive!")
 
     async with aiosqlite.connect("bot_database.db") as db:
+
+        # Check inventory
         cursor = await db.execute(
             "SELECT quantity FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
             (ctx.author.id, ctx.guild.id, item_id)
         )
         row = await cursor.fetchone()
-        if not row or row[0] < quantity:
-            return await ctx.send(f"❌ You don't have enough! (You have {row[0] if row else 0})")
 
-        cursor = await db.execute("SELECT * FROM market_items WHERE item_id = ?", (item_id,))
+        if not row or row[0] < quantity:
+            return await ctx.send(
+                f"❌ You don't have enough! (You have {row[0] if row else 0})"
+            )
+
+        # Get item data
+        cursor = await db.execute(
+            "SELECT * FROM market_items WHERE item_id = ?",
+            (item_id,)
+        )
         item = await cursor.fetchone()
+
         if not item:
             return await ctx.send("❌ Item not found!")
 
         sell_price = round(item[6] * 0.7) * quantity
         new_qty = row[0] - quantity
+
+        # Update inventory
         if new_qty <= 0:
             await db.execute(
                 "DELETE FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
@@ -2465,26 +2477,34 @@ async def msell(ctx, item_id: int, quantity: int = 1):
                 (new_qty, ctx.author.id, ctx.guild.id, item_id)
             )
 
-        user_data = await get_user_data(ctx.author.id, ctx.guild.id)
-        await update_user_data(ctx.author.id, ctx.guild.id, balance=user_data["balance"] + sell_price)
+        # 🔥 IMPORTANT FIX:
+        # Update balance directly instead of calling update_user_data()
+        await db.execute(
+            "UPDATE users SET balance = balance + ? WHERE user_id = ? AND guild_id = ?",
+            (sell_price, ctx.author.id, ctx.guild.id)
+        )
 
+        # Update market stats
         new_sold = item[8] + quantity
         new_price = calculate_market_price(item[5], item[7], new_sold)
+
         await db.execute(
             "UPDATE market_items SET total_sold = ?, current_price = ? WHERE item_id = ?",
             (new_sold, new_price, item_id)
         )
+
         await db.commit()
 
     embed = create_embed(
         title="✅ Sold Successfully!",
         description=(
             f"Sold **{quantity}x** {item[4]} **{item[1]}**\n"
-            f"for {CONFIG['CURRENCY_SYMBOL']} **{sell_price:,}** (70% of market)\n\n"
+            f"for {CONFIG['CURRENCY_SYMBOL']} **{sell_price:,}**\n\n"
             f"New market price: {CONFIG['CURRENCY_SYMBOL']} **{round(new_price):,}** 📉"
         ),
         color=discord.Color.orange()
     )
+
     await ctx.send(embed=embed)
 
 
