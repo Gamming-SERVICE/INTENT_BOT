@@ -23,6 +23,12 @@ from collections import defaultdict
 import time
 import traceback
 
+try:
+    import wavelink
+    WAVELINK_AVAILABLE = True
+except ImportError:
+    WAVELINK_AVAILABLE = False
+    logger.warning("⚠️ wavelink not installed - music features disabled. Install with: pip install wavelink")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
