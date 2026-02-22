@@ -1,14 +1,14 @@
 import os
+from dotenv import load_dotenv
 
-DEFAULT_PREFIX = "!"
+load_dotenv()  # This loads .env file
+
+DEFAULT_PREFIX = os.getenv("DEFAULT_PREFIX", "!")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 LAVALINK_URI = os.getenv("LAVALINK_URI")
 LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD")
 
-INTENTS = {
-    "members": True,
-    "message_content": True,
-    "guilds": True,
-}
+if not TOKEN:
+    raise ValueError("DISCORD_TOKEN is missing in environment variables.")
