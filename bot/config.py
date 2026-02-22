@@ -1,11 +1,12 @@
-import os
+import json
 
-TOKEN = os.getenv("TOKEN")
+with open("config.json") as f:
+    data = json.load(f)
 
-OWNER_ID = 123456789012345678  # <-- REPLACE WITH YOUR USER ID
+TOKEN = data["token"]
+OWNER_ID = data["owner_id"]
+DEFAULT_PREFIX = data["default_prefix"]
 
-DEFAULT_PREFIX = "!"
-
-LAVALINK_HOST = os.getenv("LAVALINK_HOST")
-LAVALINK_PORT = int(os.getenv("LAVALINK_PORT", 25574))
-LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD")
+LAVALINK_HOST = data["lavalink"]["host"]
+LAVALINK_PORT = data["lavalink"]["port"]
+LAVALINK_PASSWORD = data["lavalink"]["password"]
