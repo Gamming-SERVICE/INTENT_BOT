@@ -22,11 +22,6 @@ from typing import Optional, Literal
 from collections import defaultdict
 import time
 import traceback
-import logging
-
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 try:
     import wavelink
@@ -40,7 +35,7 @@ except ImportError:
 # ══════════════════════════════════════════════════════════════════════════════
 
 CONFIG = {
-    "TOKEN": os.getenv("DISCORD_TOKEN", "DISCORD_TOKEN"),  # REPLACE THIS or use environment variable
+    "TOKEN": "DISCORD_TOKEN",  # REPLACE THIS
     "GUILD_ID": 1429056625183948882,
     "PREFIX": "!",
     "OWNER_IDS": [],
@@ -90,18 +85,18 @@ CONFIG = {
     "LEVEL_UP_MESSAGE": "🎉 Congratulations {user}! You've reached level **{level}**!",
 
     # Lavalink Settings (for music)
-    "LAVALINK_URI": os.getenv("LAVALINK_URI", "http://localhost:2333"),
-    "LAVALINK_PASSWORD": os.getenv("LAVALINK_PASSWORD", "youshallnotpass"),
+    "LAVALINK_URI": "http://localhost:2333",
+    "LAVALINK_PASSWORD": "youshallnotpass",
 
     # AI Provider API Keys (set via !ai set <provider> <key> or put here)
     "AI_KEYS": {
-        "gemini": os.getenv("GEMINI_API_KEY", ""),
-        "openai": os.getenv("OPENAI_API_KEY", ""),
-        "groq": os.getenv("GROQ_API_KEY", ""),
-        "claude": os.getenv("CLAUDE_API_KEY", ""),
-        "mistral": os.getenv("MISTRAL_API_KEY", ""),
-        "cohere": os.getenv("COHERE_API_KEY", ""),
-        "perplexity": os.getenv("PERPLEXITY_API_KEY", ""),
+        "gemini": "",
+        "openai": "",
+        "groq": "",
+        "claude": "",
+        "mistral": "",
+        "cohere": "",
+        "perplexity": "",
     },
 }
 
@@ -109,16 +104,11 @@ CONFIG = {
 # BOT SETUP
 # ══════════════════════════════════════════════════════════════════════════════
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.guilds = True
-intents.voice_states = True
-
+intents = discord.Intents.all()
 bot = commands.Bot(command_prefix=CONFIG["PREFIX"], intents=intents, help_command=None)
 bot.config = CONFIG
 
-# In-memory caches with TTL
+# In-memory caches
 spam_tracker = defaultdict(list)
 xp_cooldowns = {}
 active_giveaways = {}
@@ -126,27 +116,13 @@ reaction_roles = {}
 custom_commands = {}
 warnings_cache = {}
 afk_users = {}
-music_queues = {}
-music_247 = set()
-music_loop = {}  # guild_id: "off" | "track" | "queue"
-
-# Database connection pool management
-DATABASE_PATH = "bot_database.db"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DATABASE SETUP + MIGRATION (SAFE - NEVER DROPS DATA)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def get_db_connection():
-    """Get a database connection with proper error handling"""
-    try:
-        return aiosqlite.connect(DATABASE_PATH)
-    except Exception as e:
-        logger.error(f"Database connection error: {e}")
-        raise
-
 async def init_database():
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         # Original tables (unchanged)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -375,12 +351,12 @@ async def init_database():
         """)
 
         await db.commit()
-        logger.info("✅ Database initialized and migrated successfully!")
+        print("✅ Database initialized and migrated successfully!")
 
 
 async def seed_market_items():
     """Seed the market with items if empty. Safe to call multiple times."""
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute("SELECT COUNT(*) FROM market_items")
         count = (await cursor.fetchone())[0]
 
@@ -536,7 +512,8 @@ async def seed_market_items():
             )
 
         await db.commit()
-        logger.info(f"✅ Seeded {len(items)} market items!")
+        print(f"✅ Seeded {len(items)} market items!")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPER FUNCTIONS
@@ -553,7 +530,7 @@ def get_level_from_xp(xp):
     return level, xp
 
 async def get_user_data(user_id, guild_id):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM users WHERE user_id = ? AND guild_id = ?",
             (user_id, guild_id)
@@ -576,7 +553,7 @@ async def get_user_data(user_id, guild_id):
         return dict(zip(columns, row))
 
 async def update_user_data(user_id, guild_id, **kwargs):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         set_clause = ", ".join([f"{k} = ?" for k in kwargs.keys()])
         values = list(kwargs.values()) + [user_id, guild_id]
         await db.execute(
@@ -594,8 +571,8 @@ async def log_action(guild, embed):
         if channel:
             try:
                 await channel.send(embed=embed)
-            except Exception as e:
-                logger.warning(f"Failed to send log message: {e}")
+            except:
+                pass
 
 def create_embed(title, description=None, color=discord.Color.blue(), **kwargs):
     embed = discord.Embed(title=title, description=description, color=color)
@@ -645,6 +622,7 @@ def calculate_market_price(base_price, total_bought, total_sold):
     multiplier = max(0.3, min(multiplier, 5.0))  # clamp 30%-500%
     return round(base_price * multiplier, 2)
 
+
 # ══════════════════════════════════════════════════════════════════════════════
 # TICKET PANEL (BUTTON-BASED) - NEW
 # ══════════════════════════════════════════════════════════════════════════════
@@ -658,7 +636,7 @@ class TicketCloseConfirm(discord.ui.View):
         await interaction.response.send_message("🔒 Closing ticket in 5 seconds...")
         await asyncio.sleep(5)
 
-        async with get_db_connection() as db:
+        async with aiosqlite.connect("bot_database.db") as db:
             await db.execute(
                 "UPDATE tickets SET status = 'closed', closed_at = ? WHERE channel_id = ?",
                 (datetime.datetime.utcnow().isoformat(), interaction.channel.id)
@@ -680,7 +658,7 @@ class TicketControlView(discord.ui.View):
 
     @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.red, emoji="🔒", custom_id="ticket:close")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        async with get_db_connection() as db:
+        async with aiosqlite.connect("bot_database.db") as db:
             cursor = await db.execute(
                 "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
                 (interaction.channel.id,)
@@ -707,7 +685,7 @@ class TicketPanelView(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        async with get_db_connection() as db:
+        async with aiosqlite.connect("bot_database.db") as db:
             cursor = await db.execute(
                 "SELECT channel_id FROM tickets WHERE user_id = ? AND guild_id = ? AND status = 'open'",
                 (user.id, guild.id)
@@ -752,7 +730,7 @@ class TicketPanelView(discord.ui.View):
             topic=f"Support ticket for {user} ({user.id})"
         )
 
-        async with get_db_connection() as db:
+        async with aiosqlite.connect("bot_database.db") as db:
             await db.execute(
                 "INSERT INTO tickets (channel_id, user_id, guild_id) VALUES (?, ?, ?)",
                 (channel.id, user.id, guild.id)
@@ -803,7 +781,7 @@ class ColorRoleButton(discord.ui.Button):
         member = interaction.user
 
         # Remove other color roles from this panel first
-        async with get_db_connection() as db:
+        async with aiosqlite.connect("bot_database.db") as db:
             cursor = await db.execute(
                 "SELECT role_id FROM color_roles WHERE guild_id = ?",
                 (interaction.guild.id,)
@@ -859,40 +837,6 @@ class MarketPageView(discord.ui.View):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MUSIC SYSTEM - COMPLETE (Requires Lavalink + wavelink)
-# ══════════════════════════════════════════════════════════════════════════════
-
-if WAVELINK_AVAILABLE:
-    @bot.event
-    async def on_wavelink_track_end(payload):
-        player = payload.player
-        if not player or not player.guild:
-            return
-
-        guild_id = player.guild.id
-        loop_mode = music_loop.get(guild_id, "off")
-
-        if loop_mode == "track" and payload.track:
-            await player.play(payload.track)
-            return
-
-        if loop_mode == "queue" and payload.track:
-            if guild_id not in music_queues:
-                music_queues[guild_id] = []
-            music_queues[guild_id].append(payload.track)
-
-        if guild_id in music_queues and music_queues[guild_id]:
-            next_track = music_queues[guild_id].pop(0)
-            await player.play(next_track)
-        elif guild_id not in music_247:
-            await asyncio.sleep(300)
-            if not player.playing and guild_id not in music_247:
-                try:
-                    await player.disconnect()
-                except:
-                    pass
-
-# ══════════════════════════════════════════════════════════════════════════════
 # BOT EVENTS
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -920,7 +864,7 @@ async def on_ready():
     bot.add_view(TicketControlView())
 
     # Load color role panels
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute("SELECT role_id, label, emoji, style FROM color_roles WHERE guild_id IS NOT NULL")
         rows = await cursor.fetchall()
         if rows:
@@ -1035,7 +979,7 @@ async def on_message(message):
         cmd_name = message.content[len(CONFIG["PREFIX"]):].split()[0].lower()
         if cmd_name in custom_commands:
             await message.channel.send(custom_commands[cmd_name])
-            async with get_db_connection() as db:
+            async with aiosqlite.connect("bot_database.db") as db:
                 await db.execute(
                     "UPDATE custom_commands SET uses = uses + 1 WHERE name = ?",
                     (cmd_name,)
@@ -1227,7 +1171,7 @@ async def on_raw_reaction_remove(payload):
 @tasks.loop(seconds=30)
 async def check_reminders():
     now = datetime.datetime.utcnow()
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM reminders WHERE remind_at <= ?",
             (now.isoformat(),)
@@ -1248,7 +1192,7 @@ async def check_reminders():
 @tasks.loop(seconds=30)
 async def check_giveaways():
     now = datetime.datetime.utcnow()
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM giveaways WHERE end_time <= ? AND ended = 0",
             (now.isoformat(),)
@@ -1320,7 +1264,7 @@ async def update_status():
 
 
 async def load_reaction_roles():
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute("SELECT message_id, emoji, role_id FROM reaction_roles")
         rows = await cursor.fetchall()
         for row in rows:
@@ -1329,7 +1273,7 @@ async def load_reaction_roles():
 
 
 async def load_custom_commands():
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute("SELECT name, response FROM custom_commands")
         rows = await cursor.fetchall()
         for row in rows:
@@ -1679,7 +1623,7 @@ async def unmute(ctx, member: discord.Member):
 @bot.command()
 @commands.has_permissions(moderate_members=True)
 async def warn(ctx, member: discord.Member, *, reason: str):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "INSERT INTO warnings (user_id, guild_id, moderator_id, reason) VALUES (?, ?, ?, ?)",
             (member.id, ctx.guild.id, ctx.author.id, reason)
@@ -1710,7 +1654,7 @@ async def warn(ctx, member: discord.Member, *, reason: str):
 @bot.command()
 async def warnings(ctx, member: discord.Member = None):
     member = member or ctx.author
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT reason, moderator_id, created_at FROM warnings WHERE user_id = ? AND guild_id = ? ORDER BY created_at DESC LIMIT 10",
             (member.id, ctx.guild.id)
@@ -1730,7 +1674,7 @@ async def warnings(ctx, member: discord.Member = None):
 @bot.command()
 @commands.has_permissions(moderate_members=True)
 async def clearwarns(ctx, member: discord.Member):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "DELETE FROM warnings WHERE user_id = ? AND guild_id = ?",
             (member.id, ctx.guild.id)
@@ -1902,7 +1846,7 @@ async def remind(ctx, duration: str, *, reminder: str):
     if not seconds:
         return await ctx.send("❌ Invalid duration. Use format: 1d, 2h, 30m, 60s")
     remind_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=seconds)
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "INSERT INTO reminders (user_id, channel_id, reminder, remind_at) VALUES (?, ?, ?, ?)",
             (ctx.author.id, ctx.channel.id, reminder, remind_at.isoformat())
@@ -2080,7 +2024,7 @@ async def rank(ctx, member: discord.Member = None):
         progress = 0
     bar = "█" * progress + "░" * (20 - progress)
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT COUNT(*) FROM users WHERE guild_id = ? AND xp > ?",
             (ctx.guild.id, data["xp"])
@@ -2101,7 +2045,7 @@ async def rank(ctx, member: discord.Member = None):
 
 @bot.command(aliases=["lb", "top"])
 async def leaderboard(ctx, page: int = 1):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT user_id, xp, level FROM users WHERE guild_id = ? ORDER BY xp DESC LIMIT 10 OFFSET ?",
             (ctx.guild.id, (page - 1) * 10)
@@ -2310,7 +2254,7 @@ async def gamble(ctx, amount: int):
 
 @bot.command()
 async def baltop(ctx, page: int = 1):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT user_id, balance + bank as total FROM users WHERE guild_id = ? ORDER BY total DESC LIMIT 10 OFFSET ?",
             (ctx.guild.id, (page - 1) * 10)
@@ -2336,7 +2280,7 @@ async def baltop(ctx, page: int = 1):
 
 @bot.command(aliases=["shop"])
 async def market(ctx, category: str = None, page: int = 1):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         if category:
             cursor = await db.execute(
                 "SELECT * FROM market_items WHERE LOWER(category) = ? ORDER BY current_price ASC",
@@ -2388,7 +2332,7 @@ async def market(ctx, category: str = None, page: int = 1):
 
 @bot.command()
 async def mcategories(ctx):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT DISTINCT category, COUNT(*) FROM market_items GROUP BY category ORDER BY category"
         )
@@ -2414,7 +2358,7 @@ async def mcategories(ctx):
 
 @bot.command()
 async def minfo(ctx, item_id: int):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute("SELECT * FROM market_items WHERE item_id = ?", (item_id,))
         item = await cursor.fetchone()
 
@@ -2445,7 +2389,7 @@ async def mbuy(ctx, item_id: int, quantity: int = 1):
     if quantity <= 0:
         return await ctx.send("❌ Quantity must be positive!")
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute("SELECT * FROM market_items WHERE item_id = ?", (item_id,))
         item = await cursor.fetchone()
         if not item:
@@ -2494,22 +2438,34 @@ async def msell(ctx, item_id: int, quantity: int = 1):
     if quantity <= 0:
         return await ctx.send("❌ Quantity must be positive!")
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
+
+        # Check inventory
         cursor = await db.execute(
             "SELECT quantity FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
             (ctx.author.id, ctx.guild.id, item_id)
         )
         row = await cursor.fetchone()
-        if not row or row[0] < quantity:
-            return await ctx.send(f"❌ You don't have enough! (You have {row[0] if row else 0})")
 
-        cursor = await db.execute("SELECT * FROM market_items WHERE item_id = ?", (item_id,))
+        if not row or row[0] < quantity:
+            return await ctx.send(
+                f"❌ You don't have enough! (You have {row[0] if row else 0})"
+            )
+
+        # Get item data
+        cursor = await db.execute(
+            "SELECT * FROM market_items WHERE item_id = ?",
+            (item_id,)
+        )
         item = await cursor.fetchone()
+
         if not item:
             return await ctx.send("❌ Item not found!")
 
         sell_price = round(item[6] * 0.7) * quantity
         new_qty = row[0] - quantity
+
+        # Update inventory
         if new_qty <= 0:
             await db.execute(
                 "DELETE FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
@@ -2521,33 +2477,41 @@ async def msell(ctx, item_id: int, quantity: int = 1):
                 (new_qty, ctx.author.id, ctx.guild.id, item_id)
             )
 
-        user_data = await get_user_data(ctx.author.id, ctx.guild.id)
-        await update_user_data(ctx.author.id, ctx.guild.id, balance=user_data["balance"] + sell_price)
+        # 🔥 IMPORTANT FIX:
+        # Update balance directly instead of calling update_user_data()
+        await db.execute(
+            "UPDATE users SET balance = balance + ? WHERE user_id = ? AND guild_id = ?",
+            (sell_price, ctx.author.id, ctx.guild.id)
+        )
 
+        # Update market stats
         new_sold = item[8] + quantity
         new_price = calculate_market_price(item[5], item[7], new_sold)
+
         await db.execute(
             "UPDATE market_items SET total_sold = ?, current_price = ? WHERE item_id = ?",
             (new_sold, new_price, item_id)
         )
+
         await db.commit()
 
     embed = create_embed(
         title="✅ Sold Successfully!",
         description=(
             f"Sold **{quantity}x** {item[4]} **{item[1]}**\n"
-            f"for {CONFIG['CURRENCY_SYMBOL']} **{sell_price:,}** (70% of market)\n\n"
+            f"for {CONFIG['CURRENCY_SYMBOL']} **{sell_price:,}**\n\n"
             f"New market price: {CONFIG['CURRENCY_SYMBOL']} **{round(new_price):,}** 📉"
         ),
         color=discord.Color.orange()
     )
+
     await ctx.send(embed=embed)
 
 
 @bot.command()
 async def minv(ctx, member: discord.Member = None):
     member = member or ctx.author
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             """SELECT ui.quantity, mi.name, mi.emoji, mi.rarity, mi.item_id, mi.current_price
                FROM user_items ui
@@ -2593,7 +2557,7 @@ async def trade(ctx, member: discord.Member, item_id: int, quantity: int = 1, pr
     if price < 0:
         return await ctx.send("❌ Price can't be negative!")
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT quantity FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
             (ctx.author.id, ctx.guild.id, item_id)
@@ -2637,7 +2601,7 @@ async def trade(ctx, member: discord.Member, item_id: int, quantity: int = 1, pr
 @bot.command()
 async def trades(ctx):
     """View your pending trades"""
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             """SELECT t.id, t.sender_id, t.receiver_id, t.quantity, t.price, mi.name, mi.emoji
                FROM trades t
@@ -2670,7 +2634,7 @@ async def trades(ctx):
 @bot.command()
 async def tradeaccept(ctx, trade_id: int):
     """Accept a trade offer"""
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM trades WHERE id = ? AND receiver_id = ? AND guild_id = ? AND status = 'pending'",
             (trade_id, ctx.author.id, ctx.guild.id)
@@ -2686,7 +2650,7 @@ async def tradeaccept(ctx, trade_id: int):
     quantity = trade_data[5]
     price = trade_data[6]
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         # Verify sender still has items
         cursor = await db.execute(
             "SELECT quantity FROM user_items WHERE user_id = ? AND guild_id = ? AND item_id = ?",
@@ -2743,7 +2707,7 @@ async def tradeaccept(ctx, trade_id: int):
         await db.commit()
 
     # Get item name for message
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute("SELECT name, emoji FROM market_items WHERE item_id = ?", (item_id,))
         item = await cursor.fetchone()
 
@@ -2757,7 +2721,7 @@ async def tradeaccept(ctx, trade_id: int):
 @bot.command()
 async def tradedecline(ctx, trade_id: int):
     """Decline a trade offer"""
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM trades WHERE id = ? AND (receiver_id = ? OR sender_id = ?) AND guild_id = ? AND status = 'pending'",
             (trade_id, ctx.author.id, ctx.author.id, ctx.guild.id)
@@ -2767,7 +2731,7 @@ async def tradedecline(ctx, trade_id: int):
     if not trade_data:
         return await ctx.send("❌ Trade not found!")
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "UPDATE trades SET status = 'declined', resolved_at = ? WHERE id = ?",
             (datetime.datetime.utcnow().isoformat(), trade_id)
@@ -2809,7 +2773,7 @@ async def ticketpanel(ctx, channel: discord.TextChannel = None):
 @bot.command()
 async def ticket(ctx):
     """Create a ticket via command (legacy)"""
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM tickets WHERE user_id = ? AND guild_id = ? AND status = 'open'",
             (ctx.author.id, ctx.guild.id)
@@ -2848,7 +2812,7 @@ async def ticket(ctx):
         topic=f"Support ticket for {ctx.author} ({ctx.author.id})"
     )
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "INSERT INTO tickets (channel_id, user_id, guild_id) VALUES (?, ?, ?)",
             (channel.id, ctx.author.id, ctx.guild.id)
@@ -2873,7 +2837,7 @@ async def ticket(ctx):
 @bot.command()
 async def close(ctx):
     """Close a ticket"""
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
             (ctx.channel.id,)
@@ -2886,7 +2850,7 @@ async def close(ctx):
     await ctx.send("🔒 Closing ticket in 5 seconds...")
     await asyncio.sleep(5)
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "UPDATE tickets SET status = 'closed', closed_at = ? WHERE channel_id = ?",
             (datetime.datetime.utcnow().isoformat(), ctx.channel.id)
@@ -2900,7 +2864,7 @@ async def close(ctx):
 @commands.has_permissions(manage_channels=True)
 async def add(ctx, member: discord.Member):
     """Add a user to a ticket"""
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
             (ctx.channel.id,)
@@ -2918,7 +2882,7 @@ async def add(ctx, member: discord.Member):
 @commands.has_permissions(manage_channels=True)
 async def remove(ctx, member: discord.Member):
     """Remove a user from a ticket"""
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM tickets WHERE channel_id = ? AND status = 'open'",
             (ctx.channel.id,)
@@ -2960,7 +2924,7 @@ async def gstart(ctx, duration: str, winners: int, *, prize: str):
     message = await ctx.send(embed=embed)
     await message.add_reaction("🎉")
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "INSERT INTO giveaways (message_id, channel_id, guild_id, prize, winners, host_id, end_time) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (message.id, ctx.channel.id, ctx.guild.id, prize, winners, ctx.author.id, end_time.isoformat())
@@ -2971,7 +2935,7 @@ async def gstart(ctx, duration: str, winners: int, *, prize: str):
 @bot.command()
 @commands.has_permissions(manage_guild=True)
 async def gend(ctx, message_id: int):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM giveaways WHERE message_id = ? AND ended = 0",
             (message_id,)
@@ -2999,7 +2963,7 @@ async def gend(ctx, message_id: int):
         else:
             await channel.send("😢 No one entered the giveaway.")
 
-        async with get_db_connection() as db:
+        async with aiosqlite.connect("bot_database.db") as db:
             await db.execute("UPDATE giveaways SET ended = 1 WHERE message_id = ?", (message_id,))
             await db.commit()
 
@@ -3011,7 +2975,7 @@ async def gend(ctx, message_id: int):
 @bot.command()
 @commands.has_permissions(manage_guild=True)
 async def greroll(ctx, message_id: int):
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT * FROM giveaways WHERE message_id = ?",
             (message_id,)
@@ -3041,6 +3005,11 @@ async def greroll(ctx, message_id: int):
 # MUSIC SYSTEM - COMPLETE (Requires Lavalink + wavelink)
 # ══════════════════════════════════════════════════════════════════════════════
 
+music_queues = {}
+music_247 = set()
+music_loop = {}  # guild_id: "off" | "track" | "queue"
+
+
 @bot.command()
 async def join(ctx):
     """Join your voice channel"""
@@ -3052,8 +3021,7 @@ async def join(ctx):
     vc = ctx.voice_client
     if not vc:
         vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
-        if WAVELINK_AVAILABLE:
-            vc.autoplay = wavelink.AutoPlayMode.disabled
+        if WAVELINK_AVAILABLE:             vc.autoplay = wavelink.AutoPlayMode.disabled
         await ctx.send(f"✅ Joined **{ctx.author.voice.channel.name}**")
     elif vc.channel != ctx.author.voice.channel:
         await vc.move_to(ctx.author.voice.channel)
@@ -3088,11 +3056,10 @@ async def play(ctx, *, query: str):
     vc = ctx.voice_client
     if not vc:
         vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
-        if WAVELINK_AVAILABLE:
-            vc.autoplay = wavelink.AutoPlayMode.disabled
+        if WAVELINK_AVAILABLE:             vc.autoplay = wavelink.AutoPlayMode.disabled
 
     try:
-        tracks = await wavelink.Playable.search(query)
+        tracks = await wavelink.Playable.search(query) if WAVELINK_AVAILABLE else None
         if not tracks:
             return await ctx.send("❌ No results found!")
 
@@ -3100,7 +3067,7 @@ async def play(ctx, *, query: str):
         if guild_id not in music_queues:
             music_queues[guild_id] = []
 
-        if isinstance(tracks, wavelink.Playlist):
+        if WAVELINK_AVAILABLE and isinstance(tracks, wavelink.Playlist):
             for track in tracks.tracks:
                 music_queues[guild_id].append(track)
             await ctx.send(f"✅ Added **{len(tracks.tracks)}** tracks from playlist **{tracks.name}**")
@@ -3128,6 +3095,37 @@ async def play(ctx, *, query: str):
 
     except Exception as e:
         await ctx.send(f"❌ Error: {e}")
+
+
+if WAVELINK_AVAILABLE:
+    @bot.event
+    async def on_wavelink_track_end(payload):
+        player = payload.player
+        if not player or not player.guild:
+            return
+
+        guild_id = player.guild.id
+        loop_mode = music_loop.get(guild_id, "off")
+
+        if loop_mode == "track" and payload.track:
+            await player.play(payload.track)
+            return
+
+        if loop_mode == "queue" and payload.track:
+            if guild_id not in music_queues:
+                music_queues[guild_id] = []
+            music_queues[guild_id].append(payload.track)
+
+        if guild_id in music_queues and music_queues[guild_id]:
+            next_track = music_queues[guild_id].pop(0)
+            await player.play(next_track)
+        elif guild_id not in music_247:
+            await asyncio.sleep(300)
+            if not player.playing and guild_id not in music_247:
+                try:
+                    await player.disconnect()
+                except:
+                    pass
 
 
 @bot.command()
@@ -3327,8 +3325,7 @@ async def twentyfourseven(ctx):
         vc = ctx.voice_client
         if not vc and ctx.author.voice:
             vc = await ctx.author.voice.channel.connect(cls=wavelink.Player)
-            if WAVELINK_AVAILABLE:
-                vc.autoplay = wavelink.AutoPlayMode.disabled
+            if WAVELINK_AVAILABLE:             vc.autoplay = wavelink.AutoPlayMode.disabled
             await ctx.send(f"✅ Joined **{ctx.author.voice.channel.name}** in 24/7 mode")
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3337,7 +3334,7 @@ async def twentyfourseven(ctx):
 
 async def get_ai_key(guild_id, provider):
     """Get API key from DB first, then fall back to CONFIG"""
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT token FROM ai_tokens WHERE guild_id = ? AND provider = ?",
             (guild_id, provider)
@@ -3558,7 +3555,7 @@ async def ai_set(ctx, provider: str, key: str):
     if provider not in AI_HANDLERS:
         return await ctx.send(f"❌ Unknown provider. Available: {', '.join(AI_HANDLERS.keys())}")
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             """INSERT INTO ai_tokens (guild_id, provider, token, added_by)
                VALUES (?, ?, ?, ?)
@@ -3598,7 +3595,7 @@ async def ai_providers(ctx):
 async def ai_remove(ctx, provider: str):
     """Remove an AI API key"""
     provider = provider.lower()
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "DELETE FROM ai_tokens WHERE guild_id = ? AND provider = ?",
             (ctx.guild.id, provider)
@@ -3690,7 +3687,7 @@ async def waifucollect(ctx, waifu_type: str = "waifu"):
 
     waifu_name = f"{rarity.title()} {waifu_type.title()} #{random.randint(1000, 9999)}"
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             """INSERT INTO waifu_collection (user_id, guild_id, waifu_name, waifu_url, waifu_type, rarity)
                VALUES (?, ?, ?, ?, ?, ?)""",
@@ -3719,7 +3716,7 @@ async def waifubox(ctx, member: discord.Member = None):
     """View your waifu collection"""
     member = member or ctx.author
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             """SELECT waifu_name, waifu_type, rarity, collected_at
                FROM waifu_collection
@@ -3823,7 +3820,7 @@ async def addcolorrole(ctx, role_input: discord.Role, label: str, emoji: str = "
     if style not in (1, 2, 3, 4):
         return await ctx.send("❌ Style must be 1 (Blue), 2 (Grey), 3 (Green), or 4 (Red)")
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             """INSERT INTO color_roles (guild_id, role_id, label, emoji, style)
                VALUES (?, ?, ?, ?, ?)
@@ -3838,7 +3835,7 @@ async def addcolorrole(ctx, role_input: discord.Role, label: str, emoji: str = "
 @commands.has_permissions(administrator=True)
 async def removecolorrole(ctx, role_input: discord.Role):
     """Remove a color role from the panel"""
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "DELETE FROM color_roles WHERE guild_id = ? AND role_id = ?",
             (ctx.guild.id, role_input.id)
@@ -3852,7 +3849,7 @@ async def colorpanel(ctx, channel: discord.TextChannel = None):
     """Post the color role selection panel"""
     channel = channel or ctx.channel
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         cursor = await db.execute(
             "SELECT role_id, label, emoji, style FROM color_roles WHERE guild_id = ?",
             (ctx.guild.id,)
@@ -3882,7 +3879,7 @@ async def colorpanel(ctx, channel: discord.TextChannel = None):
 async def addcmd(ctx, name: str, *, response: str):
     """Add a custom command"""
     name = name.lower()
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "INSERT OR REPLACE INTO custom_commands (name, guild_id, response, created_by) VALUES (?, ?, ?, ?)",
             (name, ctx.guild.id, response, ctx.author.id)
@@ -3896,7 +3893,7 @@ async def addcmd(ctx, name: str, *, response: str):
 async def delcmd(ctx, name: str):
     """Delete a custom command"""
     name = name.lower()
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute("DELETE FROM custom_commands WHERE name = ?", (name,))
         await db.commit()
     custom_commands.pop(name, None)
@@ -3917,7 +3914,7 @@ async def reactionrole(ctx, message_id: int, emoji: str, role_input: discord.Rol
     key = f"{message_id}-{emoji}"
     reaction_roles[key] = role_input.id
 
-    async with get_db_connection() as db:
+    async with aiosqlite.connect("bot_database.db") as db:
         await db.execute(
             "INSERT OR REPLACE INTO reaction_roles (message_id, emoji, role_id, guild_id) VALUES (?, ?, ?, ?)",
             (message_id, emoji, role_input.id, ctx.guild.id)
@@ -4048,7 +4045,7 @@ async def on_command_error(ctx, error):
         await ctx.send("❌ This command is owner-only!")
     else:
         # Log unexpected errors
-        logger.error(f"Unhandled error in {ctx.command}: {error}")
+        print(f"Unhandled error in {ctx.command}: {error}")
         traceback.print_exception(type(error), error, error.__traceback__)
         await ctx.send("❌ An unexpected error occurred. Please try again later.")
 
@@ -4062,7 +4059,6 @@ if __name__ == "__main__":
     if token == "DISCORD_TOKEN" or not token:
         print("❌ ERROR: Please set your Discord bot token in CONFIG['TOKEN']!")
         print("   Edit the bot.py file and replace 'DISCORD_TOKEN' with your actual token.")
-        print("   Alternatively, set the DISCORD_TOKEN environment variable.")
     else:
         print("🚀 Starting bot...")
         bot.run(token)
