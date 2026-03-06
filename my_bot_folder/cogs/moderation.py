@@ -1,26 +1,28 @@
 import discord
 from discord.ext import commands
+from utils import create_embed, parse_time, update_user_data
+import aiosqlite
 
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # Example: Kick Command
     @commands.command()
     @commands.has_permissions(kick_members=True)
     async def kick(self, ctx, member: discord.Member, *, reason="No reason"):
         if member.top_role >= ctx.author.top_role:
-            return await ctx.send("❌ Top role error.")
+            return await ctx.send("❌ You cannot kick this user.")
         await member.kick(reason=reason)
-        await ctx.send(f"✅ Kicked {member.mention}")
+        await ctx.send(embed=create_embed("👢 Kicked", f"{member.mention} was kicked.\nReason: {reason}", discord.Color.orange()))
 
-    # Example: Warn Command (Uses the bot's cache)
     @commands.command()
+    @commands.has_permissions(moderate_members=True)
     async def warn(self, ctx, member: discord.Member, *, reason):
-        # You can access database helpers by importing them at the top
-        from database import update_user_data
-        # Logic here...
-        await ctx.send(f"⚠️ Warned {member.name}")
+        async with aiosqlite.connect("bot_database.db") as db:
+            await db.execute("INSERT INTO warnings (user_id, guild_id, moderator_id, reason) VALUES (?, ?, ?, ?)",
+                            (member.id, ctx.guild.id, ctx.author.id, reason))
+            await db.commit()
+        await ctx.send(f"⚠️ Warned {member.mention} for: {reason}")
 
 async def setup(bot):
     await bot.add_cog(Moderation(bot))
