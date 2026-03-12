@@ -2462,7 +2462,7 @@ async def msell(ctx, item_id: int, quantity: int = 1):
         if not item:
             return await ctx.send("❌ Item not found!")
 
-        sell_price = round(item[6] * 0.7) * quantity
+        sell_price = round(item[6]) * quantity
         new_qty = row[0] - quantity
 
         # Update inventory
