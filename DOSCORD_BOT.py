@@ -2125,10 +2125,10 @@ async def daily(ctx):
 @bot.command()
 async def work(ctx):
     data = await get_user_data(ctx.author.id, ctx.guild.id)
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     last_worked = data.get("work_claimed")
     if last_worked:
-        last_worked = datetime.datetime.fromisoformat(last_worked)
+        last_worked = datetime.datetime.fromisoformat(last_worked).replace(tzinfo=datetime.timezone.utc)
         if (now - last_worked).total_seconds() < CONFIG["WORK_COOLDOWN"]:
             next_work = last_worked + datetime.timedelta(seconds=CONFIG["WORK_COOLDOWN"])
             return await ctx.send(f"❌ You're tired! Rest until <t:{int(next_work.timestamp())}:R>")
