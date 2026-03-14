@@ -576,7 +576,7 @@ async def log_action(guild, embed):
 
 def create_embed(title, description=None, color=discord.Color.blue(), **kwargs):
     embed = discord.Embed(title=title, description=description, color=color)
-    embed.timestamp = datetime.datetime.utcnow()
+    embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
     if "author" in kwargs:
         embed.set_author(name=kwargs["author"].name, icon_url=kwargs["author"].display_avatar.url)
     if "footer" in kwargs:
@@ -639,7 +639,7 @@ class TicketCloseConfirm(discord.ui.View):
         async with aiosqlite.connect("bot_database.db") as db:
             await db.execute(
                 "UPDATE tickets SET status = 'closed', closed_at = ? WHERE channel_id = ?",
-                (datetime.datetime.utcnow().isoformat(), interaction.channel.id)
+                (datetime.datetime.now(datetime.timezone.utc).isoformat(), interaction.channel.id)
             )
             await db.commit()
 
