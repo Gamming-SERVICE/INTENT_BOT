@@ -1599,7 +1599,7 @@ async def mute(ctx, member: discord.Member, duration: str, *, reason: str = "No 
         return await ctx.send("❌ Invalid duration. Use format: 1d, 2h, 30m, 60s")
     if member.top_role >= ctx.author.top_role:
         return await ctx.send("❌ You cannot mute this user.")
-    until = datetime.datetime.utcnow() + datetime.timedelta(seconds=seconds)
+    until = discord.utils.utcnow() + datetime.timedelta(seconds=seconds)
     await member.timeout(until, reason=reason)
     embed = create_embed(
         title="🔇 Member Muted",
