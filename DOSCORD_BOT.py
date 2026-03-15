@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# ULTIMATE DISCORD BOT v2.0 - PRODUCTION READY
+#                             INTENT_BOTv2.1
 # Features: Moderation, Leveling, Economy, Tickets (Button Panel), Giveaways,
 #           Auto-mod, Logging, Welcome/Leave, Reaction Roles, Color Roles,
 #           Fun, Utility, Music (24/7 VC), AI Integration, Waifu, 
