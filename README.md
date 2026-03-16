@@ -1,9 +1,9 @@
-# 🤖 INTENT™ BOT
+# 🤖 Intent™ BOT
 
-### The Ultimate All-in-One Discord Mega Bot
+### All-in-One Discord Mega Bot Framework
 
 INTENT BOT is a powerful **multi-purpose Discord bot** designed to provide everything a server needs in a single package.
-Instead of using multiple bots for moderation, economy, music, automation, and entertainment, **INTENT™ BOT combines all systems into one advanced platform**.
+Instead of using multiple bots for moderation, economy, music, automation, and entertainment, **Intent™ BOT combines all systems into one advanced platform**.
 
 It is built for **performance, stability, and scalability**, making it suitable for both small communities and large servers.
 
@@ -190,19 +190,19 @@ python bot.py
 
 ---
 
-# 📜 INTENT BOT License
+# 📜 Intent™ BOT License
 
-Copyright © INTENT™ 2024–2026
+Copyright © Intent™ 2024–2026
 
 Permission is hereby granted to any person to use, copy, modify, and distribute this software for personal or commercial purposes.
 
 However, the following conditions must be met:
 
-1. **Credit must be given to INTENT™** in any public use, distribution, or modification of this software.
-2. The original project name **INTENT BOT** and attribution to **INTENT™** must remain visible in the source code, documentation, or project description.
-3. Any modified versions must clearly state that they are **modified versions of the original INTENT BOT project**.
+1. **Credit must be given to Intent™** in any public use, distribution, or modification of this software.
+2. The original project name **Intent™ BOT** and attribution to **Intent™** must remain visible in the source code, documentation, or project description.
+3. Any modified versions must clearly state that they are **modified versions of the original Intent™ BOT project**.
 
-Failure to provide proper credit to INTENT™ violates the terms of this license.
+Failure to provide proper credit to Intent™ violates the terms of this license.
 
 This software is provided **“as is”**, without warranty of any kind. The author shall not be held liable for any damages arising from the use of this software.
 
@@ -211,7 +211,7 @@ This software is provided **“as is”**, without warranty of any kind. The aut
 
 # ❤️ Community
 
-INTENT BOT continues to evolve with new features and improvements.
+ Intent™ BOT continues to evolve with new features and improvements.
 
 Future updates will include:
 
