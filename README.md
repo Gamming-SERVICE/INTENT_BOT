@@ -2,7 +2,7 @@
 
 ### All-in-One Discord Mega Bot Framework
 
-INTENT BOT is a powerful **multi-purpose Discord bot** designed to provide everything a server needs in a single package.
+Intent™ BOT is a powerful **multi-purpose Discord bot** designed to provide everything a server needs in a single package.
 Instead of using multiple bots for moderation, economy, music, automation, and entertainment, **Intent™ BOT combines all systems into one advanced platform**.
 
 It is built for **performance, stability, and scalability**, making it suitable for both small communities and large servers.
