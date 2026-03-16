@@ -142,7 +142,7 @@ Entertainment features to keep servers active.
 
 # ⚙️ Stability & Infrastructure
 
-INTENT BOT is designed with **production-ready architecture**.
+ Intent™ BOT is designed with **production-ready architecture**.
 
 * Persistent database storage
 * Automatic reconnection handling
@@ -169,11 +169,11 @@ This ensures the bot remains stable even under continuous usage.
 
 # 🧠 Philosophy
 
-INTENT BOT was created to solve a common problem in Discord communities:
+ Intent™ BOT was created to solve a common problem in Discord communities:
 
 > Servers often require **many different bots** to handle moderation, music, economy, tickets, and automation.
 
-INTENT BOT replaces them with **one powerful, unified system**.
+ Intent™ BOT replaces them with **one powerful, unified system**.
 
 ---
 
