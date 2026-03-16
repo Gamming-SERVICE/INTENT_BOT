@@ -9,6 +9,15 @@ It is built for **performance, stability, and scalability**, making it suitable 
 
 ---
 
+⚠️ Important
+
+This repository contains source code only.
+
+No official hosted bot is provided.
+Users must self-host and configure their own Discord bot token.
+
+---
+
 # 🚀 Features
 
 ## 🛡 Moderation System
