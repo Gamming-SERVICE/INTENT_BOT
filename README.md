@@ -1,9 +1,9 @@
-# 🤖 INTENT BOT
+# 🤖 INTENT™ BOT
 
 ### The Ultimate All-in-One Discord Mega Bot
 
 INTENT BOT is a powerful **multi-purpose Discord bot** designed to provide everything a server needs in a single package.
-Instead of using multiple bots for moderation, economy, music, automation, and entertainment, **INTENT BOT combines all systems into one advanced platform**.
+Instead of using multiple bots for moderation, economy, music, automation, and entertainment, **INTENT™ BOT combines all systems into one advanced platform**.
 
 It is built for **performance, stability, and scalability**, making it suitable for both small communities and large servers.
 
@@ -219,6 +219,7 @@ Future updates will include:
 * improved marketplace mechanics
 * enhanced moderation automation
 * new gameplay systems
+* invite tracker
 * much more
 ---
 
