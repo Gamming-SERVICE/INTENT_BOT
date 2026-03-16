@@ -1,9 +1,13 @@
+import os
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════════
 
 CONFIG = {
-    "TOKEN": "DISCORD_TOKEN",  # REPLACE THIS
+    # Reads token from environment first (recommended for production hosts like Pterodactyl)
+    # Fallback allows local quick testing, but should be replaced.
+    "TOKEN": os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN") or "DISCORD_TOKEN",
     "GUILD_ID": 1429056625183948882,
     "PREFIX": "!",
     "OWNER_IDS": [],
@@ -56,7 +60,7 @@ CONFIG = {
     "LAVALINK_URI": "http://localhost:2333",
     "LAVALINK_PASSWORD": "youshallnotpass",
 
-    # AI Provider API Keys (set via !ai set <provider> <key> or put here)
+    # AI Provider API Keys
     "AI_KEYS": {
         "gemini": "",
         "openai": "",
