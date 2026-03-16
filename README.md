@@ -190,9 +190,22 @@ python bot.py
 
 ---
 
-# 📜 License
+# 📜 INTENT BOT License
 
-This project is provided for community use and development.
+Copyright © INTENT™ 2024–2026
+
+Permission is hereby granted to any person to use, copy, modify, and distribute this software for personal or commercial purposes.
+
+However, the following conditions must be met:
+
+1. **Credit must be given to INTENT™** in any public use, distribution, or modification of this software.
+2. The original project name **INTENT BOT** and attribution to **INTENT™** must remain visible in the source code, documentation, or project description.
+3. Any modified versions must clearly state that they are **modified versions of the original INTENT BOT project**.
+
+Failure to provide proper credit to INTENT™ violates the terms of this license.
+
+This software is provided **“as is”**, without warranty of any kind. The author shall not be held liable for any damages arising from the use of this software.
+
 
 ---
 
