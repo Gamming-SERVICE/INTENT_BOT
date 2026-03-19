@@ -906,7 +906,8 @@ async def on_member_join(member):
                 pass
 
     if CONFIG.get("WELCOME_CHANNEL"):
-        channel = member.guild.get_channel(CONFIG["WELCOME_CHANNEL"])
+        channel_id = await get_guild_setting(member.guild.id, "welcome_channel")
+        channel = member.guild.get_channel(channel_id) if channel_id else None
         if channel:
             embed = create_embed(
                 title="👋 Welcome!",
@@ -936,7 +937,8 @@ async def on_member_remove(member):
         return
 
     if CONFIG.get("LEAVE_CHANNEL"):
-        channel = member.guild.get_channel(CONFIG["LEAVE_CHANNEL"])
+        channel_id = await get_guild_setting(member.guild.id, "leave_channel")
+        channel = member.guild.get_channel(channel_id) if channel_id else None
         if channel:
             embed = create_embed(
                 title="👋 Goodbye!",
@@ -3774,7 +3776,15 @@ async def waifubox(ctx, member: discord.Member = None):
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setwelcome(ctx, channel: discord.TextChannel):
-    CONFIG["WELCOME_CHANNEL"] = channel.id
+    async with aiosqlite.connect("bot_database.db") as db:
+        await db.execute("""
+            INSERT INTO server_settings (guild_id, welcome_channel)
+            VALUES (?, ?)
+            ON CONFLICT(guild_id)
+            DO UPDATE SET welcome_channel = excluded.welcome_channel
+        """, (ctx.guild.id, channel.id))
+        await db.commit()
+
     await ctx.send(f"✅ Welcome channel set to {channel.mention}")
 
 @bot.command()
@@ -3786,7 +3796,8 @@ async def setleave(ctx, channel: discord.TextChannel):
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setlog(ctx, channel: discord.TextChannel):
-    CONFIG["LOG_CHANNEL"] = channel.id
+    channel_id = await get_guild_setting(guild.id, "log_channel")
+    channel = guild.get_channel(channel_id) if channel_id else None
     await ctx.send(f"✅ Log channel set to {channel.mention}")
 
 @bot.command()
