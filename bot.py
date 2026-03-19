@@ -126,7 +126,8 @@ async def init_database():
         # Original tables (unchanged)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
                 guild_id INTEGER,
                 xp INTEGER DEFAULT 0,
                 level INTEGER DEFAULT 1,
@@ -136,7 +137,8 @@ async def init_database():
                 daily_claimed TEXT,
                 work_claimed TEXT,
                 inventory TEXT DEFAULT '[]',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, guild_id)
             )
         """)
 
@@ -539,7 +541,7 @@ async def get_user_data(user_id, guild_id):
 
         if not row:
             await db.execute(
-                "INSERT INTO users (user_id, guild_id) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO users (user_id, guild_id) VALUES (?, ?)",
                 (user_id, guild_id)
             )
             await db.commit()
