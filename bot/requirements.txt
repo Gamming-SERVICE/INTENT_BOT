@@ -1,1 +1,25 @@
+# ══════════════════════════════════════════════════════
+#          Intent™ BOT v3.0 — requirements.txt
+# Install: pip install -r requirements.txt
+# ══════════════════════════════════════════════════════
 
+# Core Discord library
+discord.py>=2.4.0
+
+# Async SQLite (database)
+aiosqlite>=0.20.0
+
+# Async HTTP client (AI APIs, updater, fun commands)
+aiohttp>=3.9.0
+
+# Environment variable loading
+python-dotenv>=1.0.0
+
+# Voice support (optional, needed for music)
+PyNaCl>=1.5.0
+
+# Music (optional — requires a running Lavalink server)
+# wavelink>=3.0.0
+
+# YouTube-DL backend for yt-dlp (used by music cog)
+# yt-dlp>=2024.1.0
