@@ -450,5 +450,3 @@ class Database:
 
 # Module-level singleton
 db: Database = Database.get()
-PYEOF
-echo "Done"
