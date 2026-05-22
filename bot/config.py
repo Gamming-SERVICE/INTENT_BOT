@@ -51,7 +51,7 @@ LAVALINK_URI: str      = _optional("LAVALINK_URI",      "http://localhost:2333")
 LAVALINK_PASSWORD: str = _optional("LAVALINK_PASSWORD", "youshallnotpass")
 
 # ─── Update endpoint ──────────────────────────────────────────────────────────
-UPDATE_CHECK_URL: str = _optional("UPDATE_CHECK_URL", "https://update.bot.int.yt")
+UPDATE_CHECK_URL: str = ("https://update.bot.int.yt")
 
 # ─── Debug ────────────────────────────────────────────────────────────────────
 DEBUG: bool = _optional("DEBUG", "false").lower() in ("1", "true", "yes")
