@@ -141,3 +141,5 @@ class Tickets(commands.Cog, name="Tickets"):
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Tickets(bot))
     log.info("Tickets cog loaded")
+ENDOFFILE
+echo "Done"
