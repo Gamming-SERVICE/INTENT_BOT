@@ -4,7 +4,7 @@ import shutil
 import os
 from pathlib import Path
 
-ZIP_URL = "https://github.com/Gamming-SERVICE/INTENT_BOT/archive/refs/tags/Intent%E2%84%A2_BOT_v2.2.zip"
+ZIP_URL = "https://github.com/Gamming-SERVICE/INTENT_BOT/version/download.zip"
 
 TEMP_ZIP = "bot.zip"
 EXTRACT_DIR = "extract"
