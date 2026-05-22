@@ -310,5 +310,3 @@ class Giveaways(commands.Cog, name="Giveaways"):
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Giveaways(bot))
     log.info("Giveaways cog loaded")
-ENDOFFILE
-echo "Done"
