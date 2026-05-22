@@ -180,5 +180,3 @@ class TicketControlView(discord.ui.View):
         await interaction.response.send_message(
             embed=emb.success(f"Ticket claimed by {interaction.user.mention}!")
         )
-ENDOFFILE
-echo "Done"
