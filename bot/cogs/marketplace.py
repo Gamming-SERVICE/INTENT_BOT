@@ -196,7 +196,8 @@ class Marketplace(commands.Cog, name="Marketplace"):
             (target.id, ctx.guild.id),
         )
         if not rows:
-            return await ctx.send(embed=emb.info(f"{'Your' if target == ctx.author else target.display_name + \"'s\"} inventory is empty."))
+            owner_str = "Your" if target == ctx.author else f"{target.display_name}'s"
+            return await ctx.send(embed=emb.info(f"{owner_str} inventory is empty."))
 
         lines  = [f"{r['emoji']} **{r['name']}** ×{r['quantity']} [{RARITY_STARS.get(r['rarity'], '⚪')}]" for r in rows]
         chunks = [lines[i:i + 15] for i in range(0, len(lines), 15)]
@@ -248,11 +249,10 @@ class Marketplace(commands.Cog, name="Marketplace"):
         if not inv or inv["quantity"] < quantity:
             return await ctx.send(embed=emb.error(f"You don't have {quantity}× **{mrow['name']}**."))
 
-        cursor = await db.execute(
+        trade_id = await db.execute_returning_id(
             "INSERT INTO trades (guild_id, sender_id, receiver_id, item_id, quantity, price) VALUES (?,?,?,?,?,?)",
             (ctx.guild.id, ctx.author.id, member.id, mrow["item_id"], quantity, price),
         )
-        trade_id = cursor.lastrowid
 
         embed = emb.build(
             title="🤝 Trade Offer",
