@@ -1,16 +1,14 @@
 # ══════════════════════════════════════════════════════════════════════════════
-#                       Intent™ BOT v3.0 — main.py
-#
-# Entry point.  Run with:  python main.py
+#                       Intent™ BOT v3.0 — main.py (Fixed)
+# Run with:  python main.py
 # ══════════════════════════════════════════════════════════════════════════════
 
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
-import os
 import sys
-import traceback
 from pathlib import Path
 
 import discord
@@ -33,7 +31,6 @@ from views.ticket_views import TicketPanelView, TicketControlView
 
 log = get_logger("main")
 
-# ── All cogs to load (order matters for startup logs, not functionality) ───────
 COGS = [
     "cogs.admin",
     "cogs.moderation",
@@ -50,10 +47,6 @@ COGS = [
 ]
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# BOT SUBCLASS
-# ══════════════════════════════════════════════════════════════════════════════
-
 class IntentBot(commands.Bot):
     def __init__(self) -> None:
         intents = discord.Intents.all()
@@ -63,7 +56,13 @@ class IntentBot(commands.Bot):
             help_command=None,
             owner_ids=set(config.OWNER_IDS) if config.OWNER_IDS else None,
             case_insensitive=True,
+            strip_after_prefix=True,
         )
+        self._start_time: datetime.datetime = datetime.datetime.utcnow()
+        self._status_index: int = 0
+        self._status_task: asyncio.Task | None = None
+
+    # ── Dynamic prefix ─────────────────────────────────────────────────────────
 
     async def _get_prefix(self, bot: "IntentBot", message: discord.Message):
         default = config.DEFAULT_PREFIX
@@ -76,75 +75,76 @@ class IntentBot(commands.Bot):
             prefix = default
         return commands.when_mentioned_or(prefix)(bot, message)
 
-    # ── Setup ──────────────────────────────────────────────────────────────────
+    # ── Setup hook (runs before on_ready) ─────────────────────────────────────
 
     async def setup_hook(self) -> None:
-        log.info("Running setup_hook …")
+        log.info("Running setup_hook…")
 
-        # Connect database first
+        # Database must be connected before any cog loads
         await db.connect()
 
         # Load all cogs
-        failed = []
+        failed: list[str] = []
         for cog in COGS:
             try:
                 await self.load_extension(cog)
-                log.info("✅ Loaded cog: %s", cog)
+                log.info("  ✅ %s", cog)
             except Exception as e:
-                log.error("❌ Failed to load cog %s: %s", cog, e)
+                log.error("  ❌ %s — %s", cog, e, exc_info=True)
                 failed.append(cog)
 
         if failed:
-            log.warning("The following cogs failed to load: %s", ", ".join(failed))
+            log.warning("Failed cogs: %s", ", ".join(failed))
 
-        # Pre-populate caches
+        # Warm up caches
         await load_reaction_roles_into_cache()
         await load_custom_commands_into_cache()
 
-        # Register persistent views so buttons work after restart
+        # Register persistent views so buttons survive bot restarts
         self.add_view(TicketPanelView())
         self.add_view(TicketControlView())
 
-        # Load per-guild color-role panels
-        rows = await db.fetchall("SELECT DISTINCT guild_id FROM color_roles")
-        for row in rows:
-            guild_rows = await db.fetchall(
-                "SELECT role_id, label, emoji, style FROM color_roles WHERE guild_id = ?",
-                (row["guild_id"],),
-            )
-            if guild_rows:
-                from views.role_views import ColorRolePanelView
-                data = [(r["role_id"], r["label"], r["emoji"], r["style"]) for r in guild_rows]
-                self.add_view(ColorRolePanelView(data))
+        # Re-register per-guild color role panel views
+        try:
+            rows = await db.fetchall("SELECT DISTINCT guild_id FROM color_roles")
+            for row in rows:
+                guild_rows = await db.fetchall(
+                    "SELECT role_id, label, emoji, style FROM color_roles WHERE guild_id = ?",
+                    (row["guild_id"],),
+                )
+                if guild_rows:
+                    from views.role_views import ColorRolePanelView
+                    data = [(r["role_id"], r["label"], r["emoji"], r["style"]) for r in guild_rows]
+                    self.add_view(ColorRolePanelView(data))
+        except Exception as e:
+            log.warning("Could not re-register color role views: %s", e)
 
-        # Start background scheduler
+        # Start background tasks
         scheduler.start()
-
-        # Start updater
         updater.start()
 
-        # Sync slash commands globally
+        # Sync slash commands globally (rate-limited by Discord — only needed once per deploy)
         try:
             synced = await self.tree.sync()
             log.info("Synced %d slash commands globally", len(synced))
-        except Exception as e:
-            log.error("Failed to sync slash commands: %s", e)
+        except discord.HTTPException as e:
+            log.error("Slash command sync failed: %s", e)
 
     # ── on_ready ───────────────────────────────────────────────────────────────
 
     async def on_ready(self) -> None:
-        log.info("═" * 52)
-        log.info("  %s v%s", BOT_NAME, BOT_VERSION)
-        log.info("  Bot user:  %s (%d)", self.user, self.user.id)
-        log.info("  Servers:   %d", len(self.guilds))
-        log.info("  Users:     %d", sum(g.member_count for g in self.guilds))
-        log.info("  discord.py: %s", discord.__version__)
-        log.info("═" * 52)
-        self._status_index = 0
-        self._status_task  = asyncio.create_task(self._rotate_status())
+        log.info("═" * 54)
+        log.info("  %s  v%s", BOT_NAME, BOT_VERSION)
+        log.info("  Bot:    %s  (ID: %d)", self.user, self.user.id)
+        log.info("  Guilds: %d   Users: %d", len(self.guilds), sum(g.member_count for g in self.guilds))
+        log.info("  discord.py v%s", discord.__version__)
+        log.info("═" * 54)
+
+        if self._status_task is None or self._status_task.done():
+            self._status_task = asyncio.create_task(self._rotate_status(), name="status_rotation")
 
     async def _rotate_status(self) -> None:
-        while True:
+        while not self.is_closed():
             try:
                 msg = STATUS_MESSAGES[self._status_index % len(STATUS_MESSAGES)].format(
                     guilds=len(self.guilds),
@@ -168,15 +168,19 @@ class IntentBot(commands.Bot):
         # AFK handler
         utility_cog = self.get_cog("Utility")
         if utility_cog:
-            await utility_cog.handle_afk(message)
+            try:
+                await utility_cog.handle_afk(message)
+            except Exception as e:
+                log.warning("AFK handler error: %s", e)
 
-        # Custom commands
+        # Custom command check (guild only, non-empty message)
         if message.guild and message.content:
             try:
                 gs = await GuildSettings.get(message.guild.id)
                 prefix = gs.prefix
-                if message.content.startswith(prefix):
-                    cmd_name = message.content[len(prefix):].split()[0].lower()
+                content = message.content
+                if content.startswith(prefix) and len(content) > len(prefix):
+                    cmd_name = content[len(prefix):].split()[0].lower()
                     response = custom_commands_cache.get((message.guild.id, cmd_name))
                     if response:
                         await message.channel.send(response)
@@ -185,24 +189,30 @@ class IntentBot(commands.Bot):
                             (cmd_name, message.guild.id),
                         )
                         return
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning("Custom command check error: %s", e)
 
-        # AutoMod
+        # AutoMod (must run before process_commands)
         automod_cog = self.get_cog("AutoMod")
         if automod_cog:
-            blocked = await automod_cog.process(message)
-            if blocked:
-                return
+            try:
+                blocked = await automod_cog.process(message)
+                if blocked:
+                    return
+            except Exception as e:
+                log.warning("AutoMod error: %s", e)
 
         # XP / Leveling
         leveling_cog = self.get_cog("Leveling")
         if leveling_cog:
-            await leveling_cog.process_message_xp(message)
+            try:
+                await leveling_cog.process_message_xp(message)
+            except Exception as e:
+                log.warning("Leveling XP error: %s", e)
 
         await self.process_commands(message)
 
-    # ── Reaction roles ─────────────────────────────────────────────────────────
+    # ── Reaction role handlers ─────────────────────────────────────────────────
 
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         if payload.user_id == self.user.id or not payload.guild_id:
@@ -228,91 +238,114 @@ class IntentBot(commands.Bot):
             role   = guild.get_role(role_id) if guild else None
             if member and role:
                 try:
-                    await member.remove_roles(role, reason="Reaction role")
+                    await member.remove_roles(role, reason="Reaction role removed")
                 except discord.HTTPException:
                     pass
 
-    # ── on_guild_join / remove ─────────────────────────────────────────────────
+    # ── Guild lifecycle ────────────────────────────────────────────────────────
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
-        log.info("Joined guild: %s (%d)", guild.name, guild.id)
-        # Pre-create settings row so first access is fast
-        await GuildSettings.get(guild.id)
+        log.info("Joined guild: %s (%d) | Members: %d", guild.name, guild.id, guild.member_count)
+        try:
+            await GuildSettings.get(guild.id)   # pre-create settings row
+        except Exception as e:
+            log.warning("Could not pre-create settings for guild %d: %s", guild.id, e)
 
     async def on_guild_remove(self, guild: discord.Guild) -> None:
         log.info("Left guild: %s (%d)", guild.name, guild.id)
         GuildSettings.invalidate(guild.id)
 
-    # ── Error handler ──────────────────────────────────────────────────────────
+    # ── Centralised error handler ──────────────────────────────────────────────
 
     async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
-        # Unwrap CheckFailure wrappers
         error = getattr(error, "original", error)
 
         if isinstance(error, commands.CommandNotFound):
-            return
-
+            return   # Silently ignore unknown commands
         if isinstance(error, commands.NoPrivateMessage):
-            await ctx.send(embed=_err("This command can only be used inside a server."))
-        elif isinstance(error, commands.MissingPermissions):
-            perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
-            await ctx.send(embed=_err(f"You need these permissions: {perms}"))
-        elif isinstance(error, commands.BotMissingPermissions):
-            perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
-            await ctx.send(embed=_err(f"I'm missing required permissions: {perms}"))
-        elif isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send(embed=_err(f"Missing argument: `{error.param.name}`\nUse `/help` or check the command description."))
-        elif isinstance(error, commands.BadArgument):
-            await ctx.send(embed=_err(f"Invalid argument: {error}"))
-        elif isinstance(error, commands.CommandOnCooldown):
-            await ctx.send(embed=_err(f"Command on cooldown. Try again in **{error.retry_after:.1f}s**"))
-        elif isinstance(error, commands.MemberNotFound):
-            await ctx.send(embed=_err("Member not found."))
-        elif isinstance(error, commands.RoleNotFound):
-            await ctx.send(embed=_err("Role not found."))
-        elif isinstance(error, commands.ChannelNotFound):
-            await ctx.send(embed=_err("Channel not found."))
-        elif isinstance(error, commands.NotOwner):
-            await ctx.send(embed=_err("This command is owner-only."))
-        else:
-            log.error("Unhandled error in command %s: %s", ctx.command, error, exc_info=error)
+            return await ctx.send(embed=_err("This command can only be used inside a server."))
+        if isinstance(error, commands.MissingPermissions):
+            perms = ", ".join(f"`{p.replace('_', ' ').title()}`" for p in error.missing_permissions)
+            return await ctx.send(embed=_err(f"You need: {perms}"))
+        if isinstance(error, commands.BotMissingPermissions):
+            perms = ", ".join(f"`{p.replace('_', ' ').title()}`" for p in error.missing_permissions)
+            return await ctx.send(embed=_err(f"I'm missing: {perms}"))
+        if isinstance(error, commands.MissingRequiredArgument):
+            return await ctx.send(embed=_err(f"Missing argument: `{error.param.name}`\nUse `/help` or check the command description."))
+        if isinstance(error, (commands.BadArgument, commands.BadUnionArgument)):
+            return await ctx.send(embed=_err(f"Invalid argument: {error}"))
+        if isinstance(error, commands.CommandOnCooldown):
+            return await ctx.send(embed=_err(f"⏱️ Cooldown! Try again in **{error.retry_after:.1f}s**"), delete_after=5)
+        if isinstance(error, (commands.MemberNotFound, commands.UserNotFound)):
+            return await ctx.send(embed=_err("Member/user not found."))
+        if isinstance(error, commands.RoleNotFound):
+            return await ctx.send(embed=_err("Role not found."))
+        if isinstance(error, commands.ChannelNotFound):
+            return await ctx.send(embed=_err("Channel not found."))
+        if isinstance(error, commands.NotOwner):
+            return await ctx.send(embed=_err("This command is restricted to bot owners."))
+        if isinstance(error, commands.CheckFailure):
+            return  # Permission denied — already handled by check decorator
+
+        # Unexpected error — log full traceback
+        log.error(
+            "Unhandled command error in %s (guild=%s, user=%s): %s",
+            ctx.command, getattr(ctx.guild, "id", "DM"), ctx.author.id, error,
+            exc_info=error,
+        )
+        try:
             await ctx.send(embed=_err("An unexpected error occurred. Please try again later."))
+        except discord.HTTPException:
+            pass
 
     async def on_error(self, event: str, *args, **kwargs) -> None:
-        log.exception("Unhandled exception in event %s", event)
+        log.exception("Unhandled exception in event '%s'", event)
 
-    # ── Cleanup ────────────────────────────────────────────────────────────────
+    # ── Graceful shutdown ──────────────────────────────────────────────────────
 
     async def close(self) -> None:
-        log.info("Shutting down …")
-        await scheduler.stop()
-        await updater.stop()
-        await db.close()
+        log.info("Shutting down Intent BOT…")
+        if self._status_task and not self._status_task.done():
+            self._status_task.cancel()
+        try:
+            await scheduler.stop()
+        except Exception:
+            pass
+        try:
+            await updater.stop()
+        except Exception:
+            pass
+        try:
+            await db.close()
+        except Exception:
+            pass
         await super().close()
+        log.info("Shutdown complete.")
 
-
-# ── Inline embed helper ────────────────────────────────────────────────────────
 
 def _err(msg: str) -> discord.Embed:
     return discord.Embed(title="❌ Error", description=msg, color=discord.Color.red())
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ENTRY POINT
-# ══════════════════════════════════════════════════════════════════════════════
-
 def main() -> None:
-    # Create required directories
+    # Ensure required directories exist
     Path("data/backups").mkdir(parents=True, exist_ok=True)
     Path("logs").mkdir(exist_ok=True)
 
-    # Setup logging
     level = logging.DEBUG if config.DEBUG else logging.INFO
     setup_logging(level=level)
 
     bot = IntentBot()
-    bot.run(config.TOKEN, log_handler=None)   # We handle logging ourselves
+    try:
+        bot.run(config.TOKEN, log_handler=None, reconnect=True)
+    except KeyboardInterrupt:
+        log.info("Received keyboard interrupt — stopping.")
+    except discord.LoginFailure:
+        log.critical("Invalid bot token! Check your DISCORD_TOKEN in .env")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
+ENDOFFILE
+echo "Done"
