@@ -384,5 +384,3 @@ class Utility(commands.Cog, name="Utility"):
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Utility(bot))
     log.info("Utility cog loaded")
-ENDOFFILE
-echo "Done"
