@@ -124,11 +124,7 @@ class IntentBot(commands.Bot):
         updater.start()
 
         # Sync slash commands globally (rate-limited by Discord — only needed once per deploy)
-        try:
-            synced = await self.tree.sync()
-            log.info("Synced %d slash commands globally", len(synced))
-        except discord.HTTPException as e:
-            log.error("Slash command sync failed: %s", e)
+        log.info("Slash commands disabled (prefix-only mode)")
 
     # ── on_ready ───────────────────────────────────────────────────────────────
 
