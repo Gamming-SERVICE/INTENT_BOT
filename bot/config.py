@@ -44,14 +44,14 @@ TOKEN: str = _require("DISCORD_TOKEN")
 
 # ─── Optional ─────────────────────────────────────────────────────────────────
 OWNER_IDS: list[int] = _int_list("OWNER_IDS")
-DEFAULT_PREFIX: str = _optional("DEFAULT_PREFIX", "!")
+DEFAULT_PREFIX: str = "!"
 
 # ─── Lavalink / Music ─────────────────────────────────────────────────────────
 LAVALINK_URI: str      = _optional("LAVALINK_URI",      "http://localhost:2333")
 LAVALINK_PASSWORD: str = _optional("LAVALINK_PASSWORD", "youshallnotpass")
 
 # ─── Update endpoint ──────────────────────────────────────────────────────────
-UPDATE_CHECK_URL: str = ("https://update.bot.int.yt")
+UPDATE_CHECK_URL: str = "https://update.bot.int.yt"
 
 # ─── Debug ────────────────────────────────────────────────────────────────────
 DEBUG: bool = _optional("DEBUG", "false").lower() in ("1", "true", "yes")
