@@ -39,7 +39,7 @@ async def _log_mod_action(
 
 
 async def _send_to_log(guild: discord.Guild, embed: discord.Embed) -> None:
-    gs = await GuildSettings.get(guild.id)
+    gs = await GuildSettings.fetch(guild.id)
     if not gs.logging_enabled or not gs.log_channel:
         return
     ch = guild.get_channel(gs.log_channel)
@@ -189,7 +189,7 @@ class Moderation(commands.Cog, name="Moderation"):
     @commands.guild_only()
     async def mute(self, ctx: commands.Context, member: discord.Member, *, reason: str = "No reason provided") -> None:
         """Mute a member using the mute role. Usage: !mute @user [reason]"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         if not gs.mute_role:
             return await ctx.send(embed=emb.error("No mute role set. Use `!setmuterole @Role` first."))
         role = ctx.guild.get_role(gs.mute_role)
@@ -216,7 +216,7 @@ class Moderation(commands.Cog, name="Moderation"):
     @commands.guild_only()
     async def unmute(self, ctx: commands.Context, member: discord.Member) -> None:
         """Unmute a member. Usage: !unmute @user"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         if not gs.mute_role:
             return await ctx.send(embed=emb.error("No mute role configured."))
         role = ctx.guild.get_role(gs.mute_role)
