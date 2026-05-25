@@ -36,7 +36,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def setwelcome(self, ctx: commands.Context, channel: discord.TextChannel) -> None:
         """Set the welcome message channel. Usage: !setwelcome #channel"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await gs.set("welcome_channel", channel.id)
         await ctx.send(embed=emb.success(f"Welcome channel set to {channel.mention}"))
 
@@ -45,7 +45,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def setleave(self, ctx: commands.Context, channel: discord.TextChannel) -> None:
         """Set the leave message channel. Usage: !setleave #channel"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await gs.set("leave_channel", channel.id)
         await ctx.send(embed=emb.success(f"Leave channel set to {channel.mention}"))
 
@@ -54,7 +54,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def setlog(self, ctx: commands.Context, channel: discord.TextChannel) -> None:
         """Set the moderation log channel. Usage: !setlog #channel"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await gs.set("log_channel", channel.id)
         await ctx.send(embed=emb.success(f"Log channel set to {channel.mention}"))
 
@@ -63,7 +63,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def setlevelchannel(self, ctx: commands.Context, channel: discord.TextChannel = None) -> None:
         """Set the level-up announcement channel. Usage: !setlevelchannel [#channel]"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         if channel:
             await gs.set("level_up_channel", channel.id)
             await ctx.send(embed=emb.success(f"Level-up channel set to {channel.mention}"))
@@ -82,7 +82,7 @@ class Admin(commands.Cog, name="Admin"):
         )
         if not category:
             return await ctx.send(embed=emb.error(f"Category `{category_name}` not found."))
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await gs.set("ticket_category", category.id)
         await ctx.send(embed=emb.success(f"Ticket category set to **{category.name}**"))
 
@@ -93,7 +93,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def setmuterole(self, ctx: commands.Context, role: discord.Role) -> None:
         """Set the mute role. Usage: !setmuterole @Muted"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await gs.set("mute_role", role.id)
         await ctx.send(embed=emb.success(f"Mute role set to {role.mention}"))
 
@@ -102,7 +102,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def setautorole(self, ctx: commands.Context, role: discord.Role) -> None:
         """Set auto-role for new members. Usage: !setautorole @Member"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await gs.set("auto_role", role.id)
         await ctx.send(embed=emb.success(f"Auto role set to {role.mention}"))
 
@@ -129,7 +129,7 @@ class Admin(commands.Cog, name="Admin"):
         if not key:
             opts = ", ".join(f"`{k}`" for k in self._TOGGLE_KEYS)
             return await ctx.send(embed=emb.error(f"Unknown feature. Options: {opts}"))
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         current = gs.get(key, False)
         await gs.set(key, not current)
         status = "✅ enabled" if not current else "❌ disabled"
@@ -145,7 +145,7 @@ class Admin(commands.Cog, name="Admin"):
         """Change the command prefix. Usage: !setprefix ?"""
         if len(prefix) > 5:
             return await ctx.send(embed=emb.error("Prefix must be 5 characters or fewer."))
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await gs.set("prefix", prefix)
         await ctx.send(embed=emb.success(f"Prefix updated to `{prefix}`"))
 
@@ -156,7 +156,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def addword(self, ctx: commands.Context, *, word: str) -> None:
         """Add a word to the automod banned list. Usage: !addword badword"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         words: list = gs.banned_words
         word_lower = word.lower().strip()
         if word_lower in words:
@@ -174,7 +174,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def removeword(self, ctx: commands.Context, *, word: str) -> None:
         """Remove a word from the automod banned list. Usage: !removeword badword"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         words: list = gs.banned_words
         word_lower = word.lower().strip()
         if word_lower not in words:
@@ -188,7 +188,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def bannedwords(self, ctx: commands.Context) -> None:
         """List all automod banned words. Usage: !bannedwords"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         words = gs.banned_words
         if not words:
             return await ctx.send(embed=emb.info("No banned words configured."))
@@ -221,7 +221,7 @@ class Admin(commands.Cog, name="Admin"):
             (name, ctx.guild.id, response, ctx.author.id),
         )
         custom_commands_cache[(ctx.guild.id, name)] = response
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await ctx.send(embed=emb.success(f"Custom command `{gs.prefix}{name}` created!"))
 
     @commands.command(name="delcmd")
@@ -247,7 +247,7 @@ class Admin(commands.Cog, name="Admin"):
         )
         if not rows:
             return await ctx.send(embed=emb.info("No custom commands configured."))
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         lines = [f"`{gs.prefix}{r['name']}` — {r['uses']} uses" for r in rows]
         await ctx.send(embed=emb.build(
             title="📋 Custom Commands",
@@ -299,7 +299,7 @@ class Admin(commands.Cog, name="Admin"):
     async def setwelcomemsg(self, ctx: commands.Context, *, message: str) -> None:
         """Set welcome message template. Placeholders: {user} {server} {count}
         Usage: !setwelcomemsg Welcome {user} to {server}!"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await gs.set("welcome_message", message)
         preview = message.format(
             user=ctx.author.mention,
@@ -315,7 +315,7 @@ class Admin(commands.Cog, name="Admin"):
     async def setleavemsg(self, ctx: commands.Context, *, message: str) -> None:
         """Set leave message template. Placeholders: {username} {server} {count}
         Usage: !setleavemsg {username} left {server}."""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await gs.set("leave_message", message)
         preview = message.format(
             user=ctx.author.mention,
@@ -332,7 +332,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def settings_cmd(self, ctx: commands.Context) -> None:
         """Show all current server settings. Usage: !settings"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
 
         def ch(cid):
             if not cid:
@@ -380,7 +380,7 @@ class Admin(commands.Cog, name="Admin"):
     @commands.guild_only()
     async def resetguild(self, ctx: commands.Context) -> None:
         """Reset ALL server settings to defaults. Usage: !resetguild"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await gs.reset_all()
         await ctx.send(embed=emb.success("All server settings have been reset to defaults."))
 
