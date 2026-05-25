@@ -1,6 +1,11 @@
 # ══════════════════════════════════════════════════════════════════════════════
 #                   Intent™ BOT v3.0 — Per-Guild Settings Manager
 # ══════════════════════════════════════════════════════════════════════════════
+# BUG FIX: classmethod renamed from `get` → `fetch` to prevent Python's
+# descriptor resolution from silently preferring the instance method `get()`
+# over the classmethod, which caused the runtime error:
+#   "GuildSettings.get() missing 1 required positional argument: 'key'"
+# ══════════════════════════════════════════════════════════════════════════════
 
 from __future__ import annotations
 
@@ -17,11 +22,13 @@ log = get_logger("settings")
 
 class GuildSettings:
     """
-    Per-guild settings backed by the database.
+    Per-guild settings backed by SQLite.
 
-    Settings are loaded on first access and cached in-process.
-    Use `await GuildSettings.get(guild_id)` to obtain a settings object.
-    Call `await settings.set(key, value)` to persist a change.
+    Usage:
+        gs = await GuildSettings.fetch(guild_id)   # ← always use fetch()
+        gs.prefix           # property shortcut
+        gs.get("key")       # dict-style instance access
+        await gs.set("key", value)
     """
 
     _cache: dict[int, "GuildSettings"] = {}
@@ -32,8 +39,11 @@ class GuildSettings:
         self._data: dict[str, Any] = data
 
     # ── Factory ───────────────────────────────────────────────────────────────
+    #  Named `fetch` (not `get`) to avoid shadowing the instance method get().
+
     @classmethod
-    async def get(cls, guild_id: int) -> "GuildSettings":
+    async def fetch(cls, guild_id: int) -> "GuildSettings":
+        """Load settings for a guild, using in-process cache."""
         async with cls._cache_lock:
             if guild_id not in cls._cache:
                 cls._cache[guild_id] = await cls._load(guild_id)
@@ -52,16 +62,14 @@ class GuildSettings:
                 (guild_id, json.dumps(data)),
             )
         else:
-            # Merge stored values over defaults (handles new keys in DEFAULT_GUILD_SETTINGS)
             stored = json.loads(row["settings_json"])
             data = {**DEFAULT_GUILD_SETTINGS, **stored}
-
         log.debug("Loaded settings for guild %d", guild_id)
         return cls(guild_id, data)
 
     @classmethod
     def invalidate(cls, guild_id: int) -> None:
-        """Force a reload next time this guild's settings are requested."""
+        """Remove a guild from the cache so the next fetch() re-reads DB."""
         cls._cache.pop(guild_id, None)
 
     @classmethod
@@ -69,8 +77,10 @@ class GuildSettings:
         async with cls._cache_lock:
             cls._cache.clear()
 
-    # ── Accessors ─────────────────────────────────────────────────────────────
+    # ── Instance accessors ────────────────────────────────────────────────────
+
     def get(self, key: str, default: Any = None) -> Any:
+        """dict-style access: gs.get('prefix', '!')"""
         return self._data.get(key, default)
 
     def __getitem__(self, key: str) -> Any:
@@ -80,10 +90,10 @@ class GuildSettings:
         return key in self._data
 
     # ── Mutators ──────────────────────────────────────────────────────────────
+
     async def set(self, key: str, value: Any) -> None:
         self._data[key] = value
         await self._persist()
-        log.debug("Guild %d | set %s = %r", self._guild_id, key, value)
 
     async def set_many(self, **kwargs: Any) -> None:
         self._data.update(kwargs)
@@ -100,13 +110,13 @@ class GuildSettings:
 
     async def _persist(self) -> None:
         await db.execute(
-            """INSERT INTO guild_settings (guild_id, settings_json)
-               VALUES (?,?)
-               ON CONFLICT(guild_id) DO UPDATE SET settings_json = excluded.settings_json""",
+            "INSERT INTO guild_settings (guild_id, settings_json) VALUES (?,?) "
+            "ON CONFLICT(guild_id) DO UPDATE SET settings_json = excluded.settings_json",
             (self._guild_id, json.dumps(self._data)),
         )
 
-    # ── Convenience properties ────────────────────────────────────────────────
+    # ── Convenience properties ─────────────────────────────────────────────────
+
     @property
     def prefix(self) -> str:
         return self._data.get("prefix", "!")
@@ -234,7 +244,7 @@ class GuildSettings:
     def leave_message(self) -> str:
         return self._data.get(
             "leave_message",
-            "**{username}** has left the server. We now have {count} members.",
+            "**{username}** has left. We now have {count} members.",
         )
 
     def __repr__(self) -> str:
