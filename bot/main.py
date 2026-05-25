@@ -78,7 +78,7 @@ class IntentBot(commands.Bot):
         if not message.guild:
             return commands.when_mentioned_or(default)(bot, message)
         try:
-            gs = await GuildSettings.get(message.guild.id)
+            gs = await GuildSettings.fetch(message.guild.id)
             prefix = gs.prefix
         except Exception:
             prefix = default
@@ -160,7 +160,7 @@ class IntentBot(commands.Bot):
         # Custom commands
         if message.guild and message.content:
             try:
-                gs = await GuildSettings.get(message.guild.id)
+                gs = await GuildSettings.fetch(message.guild.id)
                 prefix = gs.prefix
                 if message.content.startswith(prefix) and len(message.content) > len(prefix):
                     cmd_name = message.content[len(prefix):].split()[0].lower()
@@ -237,7 +237,7 @@ class IntentBot(commands.Bot):
     async def on_guild_join(self, guild: discord.Guild) -> None:
         log.info("Joined guild: %s (%d)", guild.name, guild.id)
         try:
-            await GuildSettings.get(guild.id)
+            await GuildSettings.fetch(guild.id)
         except Exception as e:
             log.warning("Could not pre-create settings for guild %d: %s", guild.id, e)
 
