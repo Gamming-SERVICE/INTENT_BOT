@@ -284,7 +284,7 @@ class Analytics(commands.Cog, name="Analytics"):
             return await ctx.send(embed=emb.info("No custom commands configured."))
 
         from core.settings import GuildSettings
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         lines = [
             f"**{i}.** `{gs.prefix}{r['name']}` — {r['uses']:,} uses"
             for i, r in enumerate(rows, 1)
