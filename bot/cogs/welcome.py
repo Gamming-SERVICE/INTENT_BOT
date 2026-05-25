@@ -18,7 +18,7 @@ log = get_logger("welcome")
 
 
 async def send_to_log(guild: discord.Guild, embed: discord.Embed) -> None:
-    gs = await GuildSettings.get(guild.id)
+    gs = await GuildSettings.fetch(guild.id)
     if not gs.logging_enabled or not gs.log_channel:
         return
     ch = guild.get_channel(gs.log_channel)
@@ -39,7 +39,7 @@ class Welcome(commands.Cog, name="Welcome"):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
-        gs = await GuildSettings.get(member.guild.id)
+        gs = await GuildSettings.fetch(member.guild.id)
 
         # Auto-role
         if gs.auto_role:
@@ -89,7 +89,7 @@ class Welcome(commands.Cog, name="Welcome"):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
-        gs = await GuildSettings.get(member.guild.id)
+        gs = await GuildSettings.fetch(member.guild.id)
 
         if gs.leave_enabled and gs.leave_channel:
             ch = member.guild.get_channel(gs.leave_channel)
