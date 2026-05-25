@@ -28,7 +28,7 @@ class Marketplace(commands.Cog, name="Marketplace"):
         self.bot = bot
 
     async def _check_economy(self, ctx: commands.Context) -> bool:
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         if not gs.economy_enabled:
             await ctx.send(embed=emb.error("Economy is disabled on this server."))
             return False
@@ -41,7 +41,7 @@ class Marketplace(commands.Cog, name="Marketplace"):
     @commands.guild_only()
     async def shop(self, ctx: commands.Context, category: str | None = None) -> None:
         if not await self._check_economy(ctx): return
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
 
         if category:
             rows = await db.fetchall(
@@ -82,7 +82,7 @@ class Marketplace(commands.Cog, name="Marketplace"):
     @commands.guild_only()
     async def buy(self, ctx: commands.Context, quantity: int = 1, *, item: str) -> None:
         if not await self._check_economy(ctx): return
-        gs   = await GuildSettings.get(ctx.guild.id)
+        gs   = await GuildSettings.fetch(ctx.guild.id)
         row  = await db.fetchone(
             "SELECT * FROM market_items WHERE LOWER(name) = LOWER(?)",
             (item,),
@@ -140,7 +140,7 @@ class Marketplace(commands.Cog, name="Marketplace"):
     @commands.guild_only()
     async def sell(self, ctx: commands.Context, quantity: int = 1, *, item: str) -> None:
         if not await self._check_economy(ctx): return
-        gs      = await GuildSettings.get(ctx.guild.id)
+        gs      = await GuildSettings.fetch(ctx.guild.id)
         mrow    = await db.fetchone("SELECT * FROM market_items WHERE LOWER(name) = LOWER(?)", (item,))
         if not mrow:
             return await ctx.send(embed=emb.error(f"Item **{item}** not found."))
@@ -235,7 +235,7 @@ class Marketplace(commands.Cog, name="Marketplace"):
         if quantity < 1 or price < 0:
             return await ctx.send(embed=emb.error("Invalid quantity or price."))
 
-        gs   = await GuildSettings.get(ctx.guild.id)
+        gs   = await GuildSettings.fetch(ctx.guild.id)
         mrow = await db.fetchone("SELECT * FROM market_items WHERE LOWER(name) = LOWER(?)", (item,))
         if not mrow:
             return await ctx.send(embed=emb.error(f"Item **{item}** not found."))
@@ -272,7 +272,7 @@ class Marketplace(commands.Cog, name="Marketplace"):
     @app_commands.describe(item="Item name")
     @commands.guild_only()
     async def iteminfo(self, ctx: commands.Context, *, item: str) -> None:
-        gs  = await GuildSettings.get(ctx.guild.id)
+        gs  = await GuildSettings.fetch(ctx.guild.id)
         row = await db.fetchone("SELECT * FROM market_items WHERE LOWER(name) = LOWER(?)", (item,))
         if not row:
             return await ctx.send(embed=emb.error(f"Item **{item}** not found."))
