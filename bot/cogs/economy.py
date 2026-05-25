@@ -68,7 +68,7 @@ class Economy(commands.Cog, name="Economy"):
         self.bot = bot
 
     async def _gate(self, ctx: commands.Context) -> bool:
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         if not gs.economy_enabled:
             await ctx.send(embed=emb.error("The economy system is disabled on this server."))
             return False
@@ -82,7 +82,7 @@ class Economy(commands.Cog, name="Economy"):
         """Check your or another member's balance. Usage: !balance [@user]"""
         if not await self._gate(ctx): return
         target = member or ctx.author
-        gs   = await GuildSettings.get(ctx.guild.id)
+        gs   = await GuildSettings.fetch(ctx.guild.id)
         data = await _ensure_user(target.id, ctx.guild.id)
         await ctx.send(embed=emb.build(
             title=f"💰 {target.display_name}'s Finances",
@@ -103,7 +103,7 @@ class Economy(commands.Cog, name="Economy"):
     async def daily(self, ctx: commands.Context) -> None:
         """Claim your daily coins. Usage: !daily"""
         if not await self._gate(ctx): return
-        gs   = await GuildSettings.get(ctx.guild.id)
+        gs   = await GuildSettings.fetch(ctx.guild.id)
         data = await _ensure_user(ctx.author.id, ctx.guild.id)
         now  = datetime.datetime.utcnow()
         if data["daily_at"]:
@@ -141,7 +141,7 @@ class Economy(commands.Cog, name="Economy"):
     async def work(self, ctx: commands.Context) -> None:
         """Work to earn coins (1 hour cooldown). Usage: !work"""
         if not await self._gate(ctx): return
-        gs   = await GuildSettings.get(ctx.guild.id)
+        gs   = await GuildSettings.fetch(ctx.guild.id)
         data = await _ensure_user(ctx.author.id, ctx.guild.id)
         now  = datetime.datetime.utcnow()
         if data["work_at"]:
@@ -179,7 +179,7 @@ class Economy(commands.Cog, name="Economy"):
         if member == ctx.author: return await ctx.send(embed=emb.error("You can't pay yourself."))
         if amount <= 0: return await ctx.send(embed=emb.error("Amount must be positive."))
         if amount > 10_000_000: return await ctx.send(embed=emb.error("Maximum transfer is 10,000,000."))
-        gs   = await GuildSettings.get(ctx.guild.id)
+        gs   = await GuildSettings.fetch(ctx.guild.id)
         data = await _ensure_user(ctx.author.id, ctx.guild.id)
         if data["balance"] < amount:
             return await ctx.send(embed=emb.error(
@@ -225,7 +225,7 @@ class Economy(commands.Cog, name="Economy"):
         if lock.locked():
             return await ctx.send(embed=emb.error("You're already attempting a robbery!"))
         async with lock:
-            gs     = await GuildSettings.get(ctx.guild.id)
+            gs     = await GuildSettings.fetch(ctx.guild.id)
             victim = await _ensure_user(member.id, ctx.guild.id)
             robber = await _ensure_user(ctx.author.id, ctx.guild.id)
             if victim["balance"] < _ROB_MIN_VICTIM_BAL:
@@ -271,7 +271,7 @@ class Economy(commands.Cog, name="Economy"):
     async def deposit(self, ctx: commands.Context, amount: str = "all") -> None:
         """Deposit coins into your bank. Usage: !deposit [amount|all]"""
         if not await self._gate(ctx): return
-        gs   = await GuildSettings.get(ctx.guild.id)
+        gs   = await GuildSettings.fetch(ctx.guild.id)
         data = await _ensure_user(ctx.author.id, ctx.guild.id)
         amt  = data["balance"] if amount.lower() == "all" else int(amount) if amount.isdigit() else -1
         if amt <= 0 or amt > data["balance"]:
@@ -289,7 +289,7 @@ class Economy(commands.Cog, name="Economy"):
     async def withdraw(self, ctx: commands.Context, amount: str = "all") -> None:
         """Withdraw coins from your bank. Usage: !withdraw [amount|all]"""
         if not await self._gate(ctx): return
-        gs   = await GuildSettings.get(ctx.guild.id)
+        gs   = await GuildSettings.fetch(ctx.guild.id)
         data = await _ensure_user(ctx.author.id, ctx.guild.id)
         amt  = data["bank"] if amount.lower() == "all" else int(amount) if amount.isdigit() else -1
         if amt <= 0 or amt > data["bank"]:
@@ -309,7 +309,7 @@ class Economy(commands.Cog, name="Economy"):
     async def richlist(self, ctx: commands.Context) -> None:
         """Show top 10 wealthiest members. Usage: !richlist"""
         if not await self._gate(ctx): return
-        gs   = await GuildSettings.get(ctx.guild.id)
+        gs   = await GuildSettings.fetch(ctx.guild.id)
         rows = await db.fetchall(
             "SELECT user_id, balance + bank AS total FROM users WHERE guild_id = ? ORDER BY total DESC LIMIT 10",
             (ctx.guild.id,),
@@ -344,7 +344,7 @@ class Economy(commands.Cog, name="Economy"):
             return await ctx.send(embed=emb.error("Amount must be between 1 and 100,000,000."))
         await _ensure_user(member.id, ctx.guild.id)
         new_bal = await _add_balance(member.id, ctx.guild.id, amount)
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await db.record_transaction(ctx.guild.id, member.id, "admin_add", amount, new_bal, {"by": ctx.author.id})
         await ctx.send(embed=emb.success(
             f"Added **{gs.currency_symbol} {amount:,}** to {member.mention}.\nNew wallet: {gs.currency_symbol} {new_bal:,}"
@@ -359,7 +359,7 @@ class Economy(commands.Cog, name="Economy"):
             return await ctx.send(embed=emb.error("Amount must be positive."))
         await _ensure_user(member.id, ctx.guild.id)
         new_bal = await _add_balance(member.id, ctx.guild.id, -amount)
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         await ctx.send(embed=emb.success(
             f"Removed **{gs.currency_symbol} {amount:,}** from {member.mention}.\nNew wallet: {gs.currency_symbol} {new_bal:,}"
         ))
