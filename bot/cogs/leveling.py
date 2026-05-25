@@ -48,7 +48,7 @@ class Leveling(commands.Cog, name="Leveling"):
     async def process_message_xp(self, message: discord.Message) -> None:
         if not message.guild or message.author.bot:
             return
-        gs = await GuildSettings.get(message.guild.id)
+        gs = await GuildSettings.fetch(message.guild.id)
         if not gs.leveling_enabled:
             return
         key = (message.author.id, message.guild.id)
@@ -91,7 +91,7 @@ class Leveling(commands.Cog, name="Leveling"):
     @commands.guild_only()
     async def rank(self, ctx: commands.Context, member: discord.Member = None) -> None:
         """Check rank and XP progress. Usage: !rank [@user]"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         if not gs.leveling_enabled:
             return await ctx.send(embed=emb.error("Leveling is disabled on this server."))
         target = member or ctx.author
@@ -130,7 +130,7 @@ class Leveling(commands.Cog, name="Leveling"):
     @commands.guild_only()
     async def leveltop(self, ctx: commands.Context) -> None:
         """Show XP leaderboard. Usage: !leveltop"""
-        gs = await GuildSettings.get(ctx.guild.id)
+        gs = await GuildSettings.fetch(ctx.guild.id)
         if not gs.leveling_enabled:
             return await ctx.send(embed=emb.error("Leveling is disabled on this server."))
         rows = await db.fetchall(
