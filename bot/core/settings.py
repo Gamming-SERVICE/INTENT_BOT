@@ -4,7 +4,7 @@
 # BUG FIX: classmethod renamed from `get` → `fetch` to prevent Python's
 # descriptor resolution from silently preferring the instance method `get()`
 # over the classmethod, which caused the runtime error:
-#   "GuildSettings.get() missing 1 required positional argument: 'key'"
+#   "GuildSettings.fetch(() missing 1 required positional argument: 'key'"
 # ══════════════════════════════════════════════════════════════════════════════
 
 from __future__ import annotations
