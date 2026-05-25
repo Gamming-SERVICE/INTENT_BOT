@@ -34,7 +34,7 @@ class TicketPanelView(discord.ui.View):
                 "❌ This must be used inside a server.", ephemeral=True
             )
 
-        gs = await GuildSettings.get(guild.id)
+        gs = await GuildSettings.fetch(guild.id)
 
         # Check for an existing open ticket owned by this user
         existing = await db.fetchone(
