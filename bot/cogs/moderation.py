@@ -318,7 +318,11 @@ class Moderation(commands.Cog, name="Moderation"):
             await ctx.message.delete()
         except Exception:
             pass
-        deleted = await ctx.channel.purge(limit=amount, check=check, bulk=True)
+        deleted = await ctx.channel.purge(
+            limit=amount,
+            check=check or (lambda m: True),
+            bulk=True
+        )
         suffix = f" from {member.mention}" if member else ""
         await ctx.send(
             embed=emb.success(f"Deleted **{len(deleted)}** messages{suffix}."),
