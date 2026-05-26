@@ -1,14 +1,13 @@
 # ══════════════════════════════════════════════════════════════════════════════
 #                   Intent™ BOT v3.0 — AI Service
-#                   Multi-provider async AI query layer
+#                   Reads keys from environment variables only.
+#                   Supports: openai, gemini, groq, mistral
 # ══════════════════════════════════════════════════════════════════════════════
 
 from __future__ import annotations
 
 import asyncio
-
 import os
-from typing import Any
 
 import aiohttp
 
@@ -16,7 +15,7 @@ from core.logger import get_logger
 
 log = get_logger("ai")
 
-# ── Model identifiers ─────────────────────────────────────────────────────────
+# ── Models ────────────────────────────────────────────────────────────────────
 
 MODELS: dict[str, str] = {
     "gemini":  "gemini-1.5-flash",
@@ -27,150 +26,137 @@ MODELS: dict[str, str] = {
 
 # ── Base URLs ─────────────────────────────────────────────────────────────────
 
-_OPENAI_BASE  = "https://api.openai.com/v1"
-_GROQ_BASE    = "https://api.groq.com/openai/v1"
-_MISTRAL_BASE = "https://api.mistral.ai/v1"
+_GEMINI_BASE  = "https://generativelanguage.googleapis.com/v1beta/models"
+_OPENAI_BASE  = "https://api.openai.com/v1/chat/completions"
+_GROQ_BASE    = "https://api.groq.com/openai/v1/chat/completions"
+_MISTRAL_BASE = "https://api.mistral.ai/v1/chat/completions"
 
-# ── Request timeout (seconds) ─────────────────────────────────────────────────
+# ── Env var names ─────────────────────────────────────────────────────────────
 
-_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10)
-
-# ── Default system prompt ─────────────────────────────────────────────────────
+_ENV_KEYS: dict[str, str] = {
+    "gemini":  "GEMINI_API_KEY",
+    "openai":  "OPENAI_API_KEY",
+    "groq":    "GROQ_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+}
 
 _DEFAULT_SYSTEM = (
-    "You are Intent BOT, a helpful and friendly Discord bot assistant. "
-    "Keep responses concise and clear. Use Discord markdown where appropriate."
+    "You are Intent BOT, a helpful and concise Discord bot assistant. "
+    "Use Discord markdown where appropriate. Keep replies under 1500 characters."
 )
 
+_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=8)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Internal helpers
-# ══════════════════════════════════════════════════════════════════════════════
 
-def _get_env_key(provider: str) -> str:
+# ── Key resolution ─────────────────────────────────────────────────────────────
+
+def get_api_key(provider: str) -> str:
     """
-    Return the API key for a provider from environment variables.
-    Raises RuntimeError with a helpful message if the key is not set.
+    Read the API key for a provider from environment variables.
+    Raises RuntimeError with a clear message if the key is missing or empty.
     """
-    env_map: dict[str, str] = {
-        "gemini":  "GEMINI_API_KEY",
-        "openai":  "OPENAI_API_KEY",
-        "groq":    "GROQ_API_KEY",
-        "mistral": "MISTRAL_API_KEY",
-    }
-    env_var = env_map.get(provider.lower())
+    env_var = _ENV_KEYS.get(provider)
     if not env_var:
         raise RuntimeError(
-            f"Unknown AI provider: '{provider}'. "
-            f"Supported: {', '.join(env_map.keys())}"
+            f"Unknown provider '{provider}'. "
+            f"Supported: {', '.join(MODELS.keys())}"
         )
-    key = os.environ.get(env_var, "").strip()
+    key = os.getenv(env_var, "").strip()
     if not key:
         raise RuntimeError(
-            f"API key for provider '{provider}' is not set. "
-            f"Set the environment variable '{env_var}' in your .env file."
+            f"No API key found for '{provider}'. "
+            f"Set '{env_var}' in your .env file."
         )
     return key
 
 
-def _safe_get(data: Any, *keys: str | int, default: Any = None) -> Any:
-    """
-    Safely traverse a nested dict/list using a sequence of keys/indexes.
-    Returns `default` if any step fails instead of raising.
-    """
-    current = data
-    for key in keys:
-        try:
-            if isinstance(current, dict):
-                current = current.get(key, default)
-            elif isinstance(current, list) and isinstance(key, int):
-                current = current[key]
-            else:
-                return default
-            if current is None:
-                return default
-        except (IndexError, TypeError, KeyError):
-            return default
-    return current
+# ── OpenAI-compatible (OpenAI, Groq, Mistral) ─────────────────────────────────
 
-
-async def _post_json(
-    session: aiohttp.ClientSession,
+async def _query_openai_compat(
     url: str,
-    payload: dict,
-    headers: dict,
-) -> dict:
-    """
-    POST JSON to a URL and return the parsed response dict.
-    Raises RuntimeError on HTTP error or non-JSON body.
-    """
-    async with session.post(
-        url,
-        json=payload,
-        headers=headers,
-        timeout=_TIMEOUT,
-    ) as resp:
-        raw_text = await resp.text()
-
-        if resp.status != 200:
-            # Try to extract error message from JSON
-            try:
-                import json as _json
-                err_body = _json.loads(raw_text)
-                # OpenAI / Groq / Mistral format
-                err_msg = (
-                    _safe_get(err_body, "error", "message")
-                    or _safe_get(err_body, "error")
-                    or raw_text[:300]
-                )
-                # Gemini format
-                if isinstance(err_msg, dict):
-                    err_msg = err_msg.get("message", str(err_msg))
-            except Exception:
-                err_msg = raw_text[:300]
-
-            log.error(
-                "AI API HTTP %d from %s: %s",
-                resp.status,
-                url,
-                err_msg,
-            )
-            raise RuntimeError(
-                f"API returned HTTP {resp.status}: {err_msg}"
-            )
-
-        try:
-            return await resp.json(content_type=None)
-        except Exception as parse_err:
-            log.error(
-                "Failed to parse AI API JSON response from %s: %s | body: %s",
-                url,
-                parse_err,
-                raw_text[:500],
-            )
-            raise RuntimeError(
-                f"API returned invalid JSON: {parse_err} | "
-                f"Raw response preview: {raw_text[:200]}"
-            )
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Provider implementations
-# ══════════════════════════════════════════════════════════════════════════════
-
-async def _ask_gemini(
-    session: aiohttp.ClientSession,
     api_key: str,
+    model: str,
     prompt: str,
     system_prompt: str,
+    provider_label: str,
 ) -> str:
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type":  "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": prompt},
+        ],
+        "max_tokens":  1024,
+        "temperature": 0.7,
+    }
+
+    log.debug("%s request → model=%s prompt_len=%d", provider_label, model, len(prompt))
+
+    async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            raw = await resp.text()
+            log.debug("%s raw response (HTTP %d): %s", provider_label, resp.status, raw[:600])
+
+            if resp.status != 200:
+                log.error("%s HTTP %d: %s", provider_label, resp.status, raw[:400])
+                raise RuntimeError(
+                    f"{provider_label} API returned HTTP {resp.status}.\n"
+                    f"Response: {raw[:300]}"
+                )
+
+            try:
+                data = await resp.json(content_type=None)
+            except Exception as e:
+                log.error("%s JSON parse failed: %s | raw: %s", provider_label, e, raw[:400])
+                raise RuntimeError(
+                    f"{provider_label} returned invalid JSON: {e}\n"
+                    f"Raw preview: {raw[:200]}"
+                )
+
+    # Parse: data["choices"][0]["message"]["content"]
+    choices = data.get("choices")
+    if not choices or not isinstance(choices, list) or len(choices) == 0:
+        log.error("%s missing 'choices'. Full response: %s", provider_label, data)
+        raise RuntimeError(
+            f"{provider_label} response missing 'choices'.\n"
+            f"Raw keys returned: {list(data.keys())}"
+        )
+
+    first = choices[0]
+    if not isinstance(first, dict):
+        log.error("%s choices[0] not a dict: %s", provider_label, first)
+        raise RuntimeError(f"{provider_label} response format unexpected: choices[0]={first!r}")
+
+    message = first.get("message")
+    if not message or not isinstance(message, dict):
+        log.error("%s missing 'message' in choices[0]: %s", provider_label, first)
+        raise RuntimeError(
+            f"{provider_label} response missing 'message' in choices[0].\n"
+            f"choices[0] keys: {list(first.keys())}"
+        )
+
+    content = message.get("content")
+    if content is None:
+        log.error("%s 'content' is None. message dict: %s", provider_label, message)
+        raise RuntimeError(
+            f"{provider_label} returned empty content.\n"
+            f"finish_reason: {first.get('finish_reason')}"
+        )
+
+    return str(content).strip()
+
+
+# ── Gemini ────────────────────────────────────────────────────────────────────
+
+async def _query_gemini(api_key: str, prompt: str, system_prompt: str) -> str:
     model = MODELS["gemini"]
-    url   = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{model}:generateContent?key={api_key}"
-    )
-    # Gemini supports a system_instruction block (v1beta)
-    payload: dict = {
+    url   = f"{_GEMINI_BASE}/{model}:generateContent?key={api_key}"
+
+    payload = {
         "system_instruction": {
             "parts": [{"text": system_prompt}]
         },
@@ -179,92 +165,87 @@ async def _ask_gemini(
         ],
         "generationConfig": {
             "maxOutputTokens": 1024,
-            "temperature": 0.7,
+            "temperature":     0.7,
         },
     }
-    headers = {"Content-Type": "application/json"}
 
-    log.debug("Querying Gemini model %s", model)
-    data = await _post_json(session, url, payload, headers)
+    log.debug("Gemini request → model=%s prompt_len=%d", model, len(prompt))
 
-    # Gemini response structure:
-    # data["candidates"][0]["content"]["parts"][0]["text"]
-    text = _safe_get(data, "candidates", 0, "content", "parts", 0, "text")
-    if text:
-        return str(text).strip()
+    async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+        async with session.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+        ) as resp:
+            raw = await resp.text()
+            log.debug("Gemini raw response (HTTP %d): %s", resp.status, raw[:600])
 
-    # Check for blocked / safety filtered response
-    finish_reason = _safe_get(data, "candidates", 0, "finishReason")
-    if finish_reason and finish_reason != "STOP":
+            if resp.status != 200:
+                log.error("Gemini HTTP %d: %s", resp.status, raw[:400])
+                raise RuntimeError(
+                    f"Gemini API returned HTTP {resp.status}.\n"
+                    f"Response: {raw[:300]}"
+                )
+
+            try:
+                data = await resp.json(content_type=None)
+            except Exception as e:
+                log.error("Gemini JSON parse failed: %s | raw: %s", e, raw[:400])
+                raise RuntimeError(
+                    f"Gemini returned invalid JSON: {e}\n"
+                    f"Raw preview: {raw[:200]}"
+                )
+
+    # Parse: data["candidates"][0]["content"]["parts"][0]["text"]
+    candidates = data.get("candidates")
+    if not candidates or not isinstance(candidates, list) or len(candidates) == 0:
+        # Check for prompt block
+        feedback = data.get("promptFeedback", {})
+        block    = feedback.get("blockReason")
+        if block:
+            raise RuntimeError(f"Gemini blocked the prompt: blockReason={block}")
+        log.error("Gemini missing 'candidates'. Full response: %s", data)
         raise RuntimeError(
-            f"Gemini stopped generation: finishReason={finish_reason}. "
-            "The prompt may have been blocked by safety filters."
+            f"Gemini response missing 'candidates'.\n"
+            f"Raw keys: {list(data.keys())}"
         )
 
-    # Check for promptFeedback block
-    block_reason = _safe_get(data, "promptFeedback", "blockReason")
-    if block_reason:
+    first = candidates[0]
+    if not isinstance(first, dict):
+        raise RuntimeError(f"Gemini candidates[0] unexpected type: {first!r}")
+
+    # Check finish_reason for safety blocks
+    finish_reason = first.get("finishReason", "")
+    if finish_reason not in ("STOP", "MAX_TOKENS", ""):
+        log.warning("Gemini finishReason=%s", finish_reason)
         raise RuntimeError(
-            f"Gemini blocked the prompt: blockReason={block_reason}."
+            f"Gemini stopped generation: finishReason={finish_reason}.\n"
+            "The prompt may have been filtered by safety settings."
         )
 
-    log.error("Gemini returned unexpected response structure: %s", data)
-    raise RuntimeError(
-        "Gemini returned an unexpected response format. "
-        "Check logs for the raw response."
-    )
-
-
-async def _ask_openai_compatible(
-    session: aiohttp.ClientSession,
-    api_key: str,
-    base_url: str,
-    model: str,
-    prompt: str,
-    system_prompt: str,
-    provider_name: str,
-) -> str:
-    url = f"{base_url.rstrip('/')}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type":  "application/json",
-    }
-    payload: dict = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": prompt},
-        ],
-        "max_tokens": 1024,
-        "temperature": 0.7,
-    }
-
-    log.debug("Querying %s model %s at %s", provider_name, model, url)
-    data = await _post_json(session, url, payload, headers)
-
-    # OpenAI / Groq / Mistral response structure:
-    # data["choices"][0]["message"]["content"]
-    text = _safe_get(data, "choices", 0, "message", "content")
-    if text is not None:
-        return str(text).strip()
-
-    # Check finish_reason for hints
-    finish_reason = _safe_get(data, "choices", 0, "finish_reason")
-    if finish_reason and finish_reason not in ("stop", "length"):
+    content_block = first.get("content")
+    if not content_block or not isinstance(content_block, dict):
+        log.error("Gemini missing 'content' in candidates[0]: %s", first)
         raise RuntimeError(
-            f"{provider_name} stopped with finish_reason='{finish_reason}'. "
-            "The response may have been filtered."
+            f"Gemini response missing 'content' block.\n"
+            f"candidates[0] keys: {list(first.keys())}"
         )
 
-    log.error("%s returned unexpected response: %s", provider_name, data)
-    raise RuntimeError(
-        f"{provider_name} returned an unexpected response format. "
-        "Check logs for the raw response."
-    )
+    parts = content_block.get("parts")
+    if not parts or not isinstance(parts, list) or len(parts) == 0:
+        log.error("Gemini missing 'parts' in content: %s", content_block)
+        raise RuntimeError("Gemini response missing 'parts' in content block.")
+
+    text = parts[0].get("text") if isinstance(parts[0], dict) else None
+    if text is None:
+        log.error("Gemini parts[0] has no 'text': %s", parts[0])
+        raise RuntimeError("Gemini returned empty text in parts[0].")
+
+    return str(text).strip()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Public API
+# Public entry point
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def ask_ai(
@@ -277,170 +258,94 @@ async def ask_ai(
 
     Parameters
     ----------
-    provider : str
-        One of: "gemini", "openai", "groq", "mistral"
-    prompt : str
-        The user's message / question.
-    system_prompt : str | None
-        Optional system instruction. Falls back to the default system prompt.
+    provider    : "openai" | "gemini" | "groq" | "mistral"
+    prompt      : User message
+    system_prompt : Optional override. Falls back to _DEFAULT_SYSTEM.
 
     Returns
     -------
-    str
-        The AI's response text, stripped of leading/trailing whitespace.
+    str  — stripped response text
 
     Raises
     ------
-    RuntimeError
-        With a human-readable message if the request fails, the API key is
-        missing, the provider is unknown, or the response cannot be parsed.
+    RuntimeError — human-readable message on any failure
     """
-    provider_lower = provider.lower().strip()
+    provider = provider.lower().strip()
 
-    if provider_lower not in MODELS:
+    if provider not in MODELS:
         raise RuntimeError(
             f"Unknown provider '{provider}'. "
-            f"Supported providers: {', '.join(MODELS.keys())}"
+            f"Choose: {', '.join(MODELS.keys())}"
         )
 
     if not prompt or not prompt.strip():
         raise RuntimeError("Prompt cannot be empty.")
 
     prompt        = prompt.strip()
-    system_prompt = (system_prompt or _DEFAULT_SYSTEM).strip()
+    sys_prompt    = (system_prompt or _DEFAULT_SYSTEM).strip()
 
-    log.info(
-        "AI request — provider=%s prompt_len=%d",
-        provider_lower,
-        len(prompt),
-    )
-
-    # Resolve API key (raises RuntimeError if missing)
-    api_key = _get_env_key(provider_lower)
+    # Resolve key — raises RuntimeError with clear message if missing
+    api_key = get_api_key(provider)
 
     try:
-        async with aiohttp.ClientSession() as session:
-            if provider_lower == "gemini":
-                result = await _ask_gemini(
-                    session, api_key, prompt, system_prompt
-                )
+        if provider == "gemini":
+            result = await _query_gemini(api_key, prompt, sys_prompt)
 
-            elif provider_lower == "openai":
-                result = await _ask_openai_compatible(
-                    session, api_key,
-                    _OPENAI_BASE, MODELS["openai"],
-                    prompt, system_prompt,
-                    "OpenAI",
-                )
+        elif provider == "openai":
+            result = await _query_openai_compat(
+                _OPENAI_BASE, api_key, MODELS["openai"],
+                prompt, sys_prompt, "OpenAI",
+            )
 
-            elif provider_lower == "groq":
-                result = await _ask_openai_compatible(
-                    session, api_key,
-                    _GROQ_BASE, MODELS["groq"],
-                    prompt, system_prompt,
-                    "Groq",
-                )
+        elif provider == "groq":
+            result = await _query_openai_compat(
+                _GROQ_BASE, api_key, MODELS["groq"],
+                prompt, sys_prompt, "Groq",
+            )
 
-            elif provider_lower == "mistral":
-                result = await _ask_openai_compatible(
-                    session, api_key,
-                    _MISTRAL_BASE, MODELS["mistral"],
-                    prompt, system_prompt,
-                    "Mistral",
-                )
+        elif provider == "mistral":
+            result = await _query_openai_compat(
+                _MISTRAL_BASE, api_key, MODELS["mistral"],
+                prompt, sys_prompt, "Mistral",
+            )
 
-            else:
-                # Guard — should be unreachable due to check above
-                raise RuntimeError(f"Unhandled provider: {provider_lower}")
+        else:
+            raise RuntimeError(f"Unhandled provider: {provider}")
 
     except RuntimeError:
-        # Re-raise our own errors unchanged
-        raise
+        raise  # pass through our own readable errors unchanged
+
+    except asyncio.TimeoutError:
+        log.error("Timeout querying %s", provider)
+        raise RuntimeError(
+            f"{provider} API timed out after {_TIMEOUT.total}s. "
+            "Try again in a moment."
+        )
 
     except aiohttp.ClientConnectorError as e:
-        log.error("Connection error querying %s: %s", provider_lower, e)
+        log.error("Connection error querying %s: %s", provider, e)
         raise RuntimeError(
-            f"Could not connect to {provider_lower} API: {e}. "
+            f"Could not connect to {provider} API: {e}. "
             "Check your internet connection."
         )
 
-    except aiohttp.ClientResponseError as e:
-        log.error("HTTP error from %s: %s", provider_lower, e)
-        raise RuntimeError(
-            f"{provider_lower} API HTTP error {e.status}: {e.message}"
-        )
-
-    except aiohttp.ServerTimeoutError:
-        log.error("Timeout querying %s", provider_lower)
-        raise RuntimeError(
-            f"{provider_lower} API timed out after {_TIMEOUT.total}s. "
-            "Try again or use a different provider."
-        )
-
-    except asyncio.TimeoutError:
-        log.error("asyncio timeout querying %s", provider_lower)
-        raise RuntimeError(
-            f"Request to {provider_lower} timed out. Try again."
-        )
+    except aiohttp.ClientError as e:
+        log.error("aiohttp error querying %s: %s", provider, e)
+        raise RuntimeError(f"{provider} network error: {e}")
 
     except Exception as e:
-        log.exception(
-            "Unexpected error querying %s: %s", provider_lower, e
-        )
-        raise RuntimeError(
-            f"Unexpected error communicating with {provider_lower}: {e}"
-        )
+        log.exception("Unexpected error querying %s: %s", provider, e)
+        raise RuntimeError(f"Unexpected error from {provider}: {e}")
 
     if not result:
-        raise RuntimeError(
-            f"{provider_lower} returned an empty response. "
-            "Try rephrasing your prompt."
-        )
+        raise RuntimeError(f"{provider} returned an empty response.")
 
-    log.info(
-        "AI response — provider=%s response_len=%d",
-        provider_lower,
-        len(result),
-    )
+    log.info("AI ok — provider=%s response_len=%d", provider, len(result))
     return result
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Convenience wrappers (optional — used by cogs directly)
-# ══════════════════════════════════════════════════════════════════════════════
-
-async def ask_gemini(prompt: str, system_prompt: str | None = None) -> str:
-    """Shortcut for ask_ai('gemini', ...)"""
-    return await ask_ai("gemini", prompt, system_prompt)
-
-
-async def ask_openai(prompt: str, system_prompt: str | None = None) -> str:
-    """Shortcut for ask_ai('openai', ...)"""
-    return await ask_ai("openai", prompt, system_prompt)
-
-
-async def ask_groq(prompt: str, system_prompt: str | None = None) -> str:
-    """Shortcut for ask_ai('groq', ...)"""
-    return await ask_ai("groq", prompt, system_prompt)
-
-
-async def ask_mistral(prompt: str, system_prompt: str | None = None) -> str:
-    """Shortcut for ask_ai('mistral', ...)"""
-    return await ask_ai("mistral", prompt, system_prompt)
-
-
-async def list_available_providers() -> list[str]:
-    """
-    Return a list of providers that have an API key configured
-    in the current environment.
-    """
-    env_map = {
-        "gemini":  "GEMINI_API_KEY",
-        "openai":  "OPENAI_API_KEY",
-        "groq":    "GROQ_API_KEY",
-        "mistral": "MISTRAL_API_KEY",
-    }
-    return [
-        p for p, env_var in env_map.items()
-        if os.environ.get(env_var, "").strip()
-    ]
+def list_configured_providers() -> list[str]:
+    """Return providers that have an API key set in the environment."""
+    return [p for p, env in _ENV_KEYS.items() if os.getenv(env, "").strip()]
+ENDOFFILE
+python3 -c "import ast; ast.parse(open('/home/claude/intentbot/services/ai_service.py').read()); print('ai_service.py syntax OK')"
