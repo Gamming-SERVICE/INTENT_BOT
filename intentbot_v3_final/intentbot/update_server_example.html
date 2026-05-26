@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intent BOT — Update Server</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0d1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        header h1 {
+            font-size: 2.2rem;
+            color: #58a6ff;
+            letter-spacing: 2px;
+        }
+        header p {
+            color: #8b949e;
+            margin-top: 8px;
+            font-size: 0.95rem;
+        }
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 32px 40px;
+            max-width: 720px;
+            width: 100%;
+            margin-bottom: 24px;
+        }
+        .card h2 {
+            color: #58a6ff;
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 12px;
+        }
+        .version-box {
+            background: #0d1117;
+            border: 1px solid #3fb950;
+            border-radius: 8px;
+            padding: 20px 24px;
+            font-size: 1.05rem;
+            line-height: 2;
+        }
+        .version-box span.key   { color: #79c0ff; }
+        .version-box span.value { color: #3fb950; font-weight: bold; }
+        .version-box span.url   { color: #ffa657; word-break: break-all; }
+        pre {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            font-size: 0.88rem;
+            line-height: 1.7;
+        }
+        pre .comment { color: #8b949e; }
+        pre .tag     { color: #7ee787; }
+        pre .text    { color: #3fb950; font-weight: bold; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        table th {
+            text-align: left;
+            color: #58a6ff;
+            border-bottom: 1px solid #30363d;
+            padding: 8px 12px;
+        }
+        table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #21262d;
+            vertical-align: top;
+        }
+        table td:first-child { color: #3fb950; font-weight: bold; white-space: nowrap; }
+        table tr:last-child td { border-bottom: none; }
+        .badge {
+            display: inline-block;
+            background: #1f6feb;
+            color: #fff;
+            border-radius: 20px;
+            padding: 2px 12px;
+            font-size: 0.78rem;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        footer {
+            margin-top: 40px;
+            color: #8b949e;
+            font-size: 0.82rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>⚡ Intent™ BOT Update Server</h1>
+    <p>Automatic update endpoint for Intent™ BOT v3.0</p>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     LIVE UPDATE PAYLOAD
+     The bot reads this page every hour. It looks for:
+       version=X.Y.Z
+       zip=https://...
+     These MUST be in the <body> as plain text (anywhere on the page).
+═══════════════════════════════════════════════════════════════ -->
+
+<div class="card">
+    <h2>📡 Current Live Update Payload <span class="badge">ACTIVE</span></h2>
+    <div class="version-box">
+        <span class="key">version=</span><span class="value">3.0.0</span><br>
+        <span class="key">zip=</span><span class="url">https://github.com/yourusername/intentbot/archive/refs/heads/main.zip</span>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📄 How the Bot Parses This Page</h2>
+    <p style="color:#8b949e; margin-bottom:16px;">The updater service fetches this URL and uses regex to extract these two values from anywhere in the HTML body:</p>
+    <pre><span class="comment"># Regex patterns used by services/updater_service.py</span>
+version_match = re.search(r"version=([0-9]+\.[0-9]+\.[0-9]+)", html)
+zip_match     = re.search(r"zip=(https?://[^\s&lt;&quot;']+)", html)
+
+<span class="comment"># Extracted values:</span>
+remote_version = <span class="text">"3.0.0"</span>
+zip_url        = <span class="text">"https://github.com/yourusername/intentbot/archive/refs/heads/main.zip"</span></pre>
+</div>
+
+<div class="card">
+    <h2>🔄 Update Flow</h2>
+    <table>
+        <tr>
+            <th>Step</th>
+            <th>What happens</th>
+        </tr>
+        <tr>
+            <td>1. Check</td>
+            <td>Bot fetches this page every 60 minutes via aiohttp</td>
+        </tr>
+        <tr>
+            <td>2. Compare</td>
+            <td>Remote version is compared to the running <code>BOT_VERSION</code> in core/constants.py</td>
+        </tr>
+        <tr>
+            <td>3. Skip</td>
+            <td>If versions are equal → logs "Already on latest version" and waits</td>
+        </tr>
+        <tr>
+            <td>4. Download</td>
+            <td>If remote is newer → downloads the ZIP from the <code>zip=</code> URL</td>
+        </tr>
+        <tr>
+            <td>5. Validate</td>
+            <td>Checks the downloaded file is a valid ZIP before touching anything</td>
+        </tr>
+        <tr>
+            <td>6. Backup</td>
+            <td>Creates a timestamped backup ZIP in <code>data/backups/</code></td>
+        </tr>
+        <tr>
+            <td>7. Apply</td>
+            <td>Extracts new files, <strong>skipping</strong>: <code>data/database.db</code>, <code>.env</code>, <code>logs/</code>, <code>data/backups/</code></td>
+        </tr>
+        <tr>
+            <td>8. Restart</td>
+            <td>Bot restarts via <code>os.execv(sys.executable, [sys.executable] + sys.argv)</code></td>
+        </tr>
+    </table>
+</div>
+
+<div class="card">
+    <h2>🏠 Host Your Own Update Server</h2>
+    <p style="color:#8b949e; margin-bottom:16px;">To host your own update endpoint, create a simple HTML or text file containing exactly these two lines anywhere in the body, then host it on any static server (Netlify, GitHub Pages, nginx, etc.):</p>
+    <pre><span class="tag">&lt;body&gt;</span>
+<span class="text">version=3.0.1</span>
+<span class="text">zip=https://github.com/yourusername/intentbot/archive/refs/heads/main.zip</span>
+<span class="tag">&lt;/body&gt;</span></pre>
+    <p style="color:#8b949e; margin-top:12px;">Set <code>UPDATE_CHECK_URL</code> in your <code>.env</code> to point to your hosted file.</p>
+</div>
+
+<div class="card">
+    <h2>🔧 Configuration (<code>.env</code>)</h2>
+    <pre><span class="comment"># Point to your own update server or use the default</span>
+UPDATE_CHECK_URL=https://update.bot.int.yt
+
+<span class="comment"># To disable auto-updates, set an invalid URL or empty string</span>
+<span class="comment"># UPDATE_CHECK_URL=</span></pre>
+</div>
+
+<footer>
+    Intent™ BOT v3.0 · Update Server · Auto-refreshed by bot every 60 minutes
+</footer>
+
+</body>
+</html>
