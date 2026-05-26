@@ -347,5 +347,3 @@ async def ask_ai(
 def list_configured_providers() -> list[str]:
     """Return providers that have an API key set in the environment."""
     return [p for p, env in _ENV_KEYS.items() if os.getenv(env, "").strip()]
-ENDOFFILE
-python3 -c "import ast; ast.parse(open('/home/claude/intentbot/services/ai_service.py').read()); print('ai_service.py syntax OK')"
