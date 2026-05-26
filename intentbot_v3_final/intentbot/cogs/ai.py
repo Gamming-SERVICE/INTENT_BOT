@@ -310,5 +310,3 @@ class AI(commands.Cog, name="AI"):
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(AI(bot))
     log.info("AI cog loaded")
-ENDOFFILE
-python3 -c "import ast; ast.parse(open('/home/claude/intentbot/cogs/ai.py').read()); print('ai.py syntax OK')"
