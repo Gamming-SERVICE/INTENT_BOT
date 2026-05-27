@@ -18,7 +18,7 @@ log = get_logger("ai")
 # ── Models ────────────────────────────────────────────────────────────────────
 
 MODELS: dict[str, str] = {
-    "gemini":  "gemini-1.5-flash",
+    "gemini":  "gemini-2.0-flash",
     "openai":  "gpt-4o-mini",
     "groq":    "llama3-70b-8192",
     "mistral": "mistral-small-latest",
@@ -26,7 +26,7 @@ MODELS: dict[str, str] = {
 
 # ── Base URLs ─────────────────────────────────────────────────────────────────
 
-_GEMINI_BASE  = "https://generativelanguage.googleapis.com/v1beta/models"
+_GEMINI_BASE  = "https://generativelanguage.googleapis.com/v1/models"
 _OPENAI_BASE  = "https://api.openai.com/v1/chat/completions"
 _GROQ_BASE    = "https://api.groq.com/openai/v1/chat/completions"
 _MISTRAL_BASE = "https://api.mistral.ai/v1/chat/completions"
