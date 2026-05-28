@@ -1,0 +1,54 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#                   Intent™ BOT v3.0 — Systemd Service File
+#
+# Installation:
+#   sudo cp intentbot.service /etc/systemd/system/
+#   sudo nano /etc/systemd/system/intentbot.service  (update User= and WorkingDirectory=)
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable intentbot
+#   sudo systemctl start intentbot
+#
+# Management:
+#   sudo systemctl status intentbot
+#   sudo journalctl -u intentbot -f          (live logs)
+#   sudo systemctl restart intentbot
+#   sudo systemctl stop intentbot
+# ══════════════════════════════════════════════════════════════════════════════
+
+[Unit]
+Description=Intent BOT v3.0 — Multi-server Discord Bot
+Documentation=https://github.com/yourusername/intentbot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# !! CHANGE THESE to match your system !!
+User=ubuntu
+WorkingDirectory=/home/ubuntu/intentbot
+
+# Use venv if available, fall back to system python
+ExecStart=/home/ubuntu/intentbot/venv/bin/python main.py
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Output
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=intentbot
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
